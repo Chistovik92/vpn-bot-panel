@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+
+{% block title %}System - VPN Admin{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="fas fa-cog"></i> System Management</h1>
+</div>
+
+<div class="row">
+    <!-- System Information -->
+    <div class="col-lg-6 mb-4">
+        <div class="card shadow">
+            <div class="card-header bg-info text-white">
+                <h6 class="mb-0"><i class="fas fa-info-circle"></i> System Information</h6>
+            </div>
+            <div class="card-body">
+                {% if system_info.error %}
+                    <div class="alert alert-danger">{{ system_info.error }}</div>
+                {% else %}
+                    <div class="mb-3">
+                        <strong>Disk Usage:</strong>
+                        <div class="mt-1">
+                            <code>{{ system_info.disk_usage }}</code>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <strong>Memory Usage:</strong>
+                        <div class="mt-1">
+                            <code>{{ system_info.memory_usage }}</code>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <strong>Server Uptime:</strong>
+                        <div class="mt-1">
+                            <code>{{ system_info.uptime }}</code>
+                        </div>
+                    </div>
+                    <div>
+                        <strong>Server Time:</strong>
+                        <div class="mt-1">
+                            <code>{{ system_info.server_time }}</code>
+                        </div>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Version Information -->
+    <div class="col-lg-6 mb-4">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h6 class="mb-0"><i class="fas fa-code-branch"></i> Version Information</h6>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <strong>Current Version:</strong>
+                    <span class="badge bg-secondary">{{ version_info.current_version }}</span>
+                </div>
+                <div class="mb-3">
+                    <strong>Latest Version:</strong>
+                    <span class="badge bg-{% if version_info.update_available %}warning{% else %}success{% endif %}">
+                        {{ version_info.latest_version }}
+                    </span>
+                    {% if version_info.update_available %}
+                        <span class="badge bg-warning ms-2">Update Available</span>
+                    {% else %}
+                        <span class="badge bg-success ms-2">Up to Date</span>
+                    {% endif %}
+                </div>
+                
+                {% if version_info.update_available %}
+                <div class="alert alert-warning">
+                    <strong>Update Available!</strong>
+                    <p>A new version {{ version_info.latest_version }} is available.</p>
+                    <button class="btn btn-warning btn-sm" onclick="updateSystem()">
+                        <i class="fas fa-download"></i> Update Now
+                    </button>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Update Section -->
+<div class="row">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header bg-warning text-dark">
+                <h6 class="mb-0"><i class="fas fa-sync-alt"></i> System Update</h6>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <strong>Update Information:</strong>
+                    <p>This will update the system from GitHub repository. The process includes:</p>
+                    <ul>
+                        <li>Creating backup of current installation</li>
+                        <li>Downloading latest version from GitHub</li>
+                        <li>Updating dependencies</li>
+                        <li>Restarting services</li>
+                    </ul>
+                </div>
+                
+                <div class="d-grid gap-2">
+                    <button class="btn btn-warning btn-lg" onclick="updateSystem()">
+                        <i class="fas fa-rocket"></i> Update System from GitHub
+                    </button>
+                </div>
+                
+                <div id="updateOutput" class="mt-3" style="display: none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <strong>Update Log:</strong>
+                        </div>
+                        <div class="card-body">
+                            <pre id="updateLog" class="bg-dark text-light p-3 rounded" style="max-height: 300px; overflow-y: auto;"></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function updateSystem() {
+    if (!confirm('Are you sure you want to update the system? This may take several minutes.')) {
+        return;
+    }
+    
+    const outputDiv = document.getElementById('updateOutput');
+    const logPre = document.getElementById('updateLog');
+    
+    outputDiv.style.display = 'block';
+    logPre.textContent = 'Starting update process...\n';
+    
+    fetch('/api/system/update', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            logPre.textContent += '\n✅ ' + data.message + '\n';
+            logPre.textContent += data.output + '\n';
+            logPre.textContent += '\n✅ Update completed successfully!';
+            
+            // Reload page after 5 seconds
+            setTimeout(() => {
+                location.reload();
+            }, 5000);
+        } else {
+            logPre.textContent += '\n❌ ' + data.message + '\n';
+            if (data.error) {
+                logPre.textContent += data.error + '\n';
+            }
+        }
+    })
+    .catch(error => {
+        logPre.textContent += '\n❌ Update failed: ' + error + '\n';
+    });
+}
+</script>
+{% endblock %}

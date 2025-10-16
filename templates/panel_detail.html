@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}Panel {{ panel.name }} - VPN Admin{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">
+        <i class="fas fa-server"></i> {{ panel.name }}
+        <span class="badge bg-{% if panel.is_active %}success{% else %}secondary{% endif %} ms-2">
+            {% if panel.is_active %}Active{% else %}Inactive{% endif %}
+        </span>
+    </h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <a href="{{ url_for('panels') }}" class="btn btn-outline-secondary btn-sm me-2">
+            <i class="fas fa-arrow-left me-1"></i> Back to Panels
+        </a>
+        <button class="btn btn-{% if panel.is_active %}warning{% else %}success{% endif %} btn-sm"
+                onclick="togglePanel({{ panel.id }})">
+            <i class="fas fa-power-off me-1"></i> 
+            {% if panel.is_active %}Disable{% else %}Enable{% endif %}
+        </button>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Panel Information -->
+    <div class="col-lg-6 mb-4">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h6 class="mb-0"><i class="fas fa-info-circle"></i> Panel Information</h6>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-sm-4 fw-bold">Name:</div>
+                    <div class="col-sm-8">{{ panel.name }}</div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-sm-4 fw-bold">Location:</div>
+                    <div class="col-sm-8">
+                        <i class="fas fa-map-marker-alt text-muted me-1"></i>
+                        {{ panel.location or 'Not specified' }}
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-sm-4 fw-bold">URL:</div>
+                    <div class="col-sm-8">
+                        <a href="{{ panel.url }}" target="_blank" class="text-decoration-none">
+                            <i class="fas fa-external-link-alt me-1"></i>
+                            {{ panel.url }}
+                        </a>
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-sm-4 fw-bold">Username:</div>
+                    <div class="col-sm-8">
+                        <code>{{ panel.username }}</code>
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-sm-4 fw-bold">Status:</div>
+                    <div class="col-sm-8">
+                        {% if panel.is_active %}
+                            <span class="badge bg-success">Active</span>
+                        {% else %}
+                            <span class="badge bg-secondary">Inactive</span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-sm-4 fw-bold">Clients:</div>
+                    <div class="col-sm-8">
+                        {{ panel.current_clients }} / {{ panel.max_clients }}
+                        <div class="progress mt-1" style="height: 6px;">
+                            {% set usage_percent = (panel.current_clients / panel.max_clients * 100) if panel.max_clients > 0 else 0 %}
+                            <div class="progress-bar {% if usage_percent > 80 %}bg-danger{% elif usage_percent > 60 %}bg-warning{% else %}bg-success{% endif %}" 
+                                 style="width: {{ usage_percent

@@ -29,7 +29,7 @@
 ```
 bash
 # Скачать и запустить установщик
-curl -L -o install.sh https://raw.githubusercontent.com/your_username/vpn-bot-panel/main/install.sh
+curl -L -o install.sh https://raw.githubusercontent.com/Chistovik92/vpn-bot-panel/main/install.sh
 chmod +x install.sh
 sudo ./install.sh
 ```
@@ -39,7 +39,7 @@ sudo ./install.sh
 ```
 bash
 # Клонировать репозиторий
-git clone https://github.com/your_username/vpn-bot-panel.git
+git clone https://github.com/Chistovik92/vpn-bot-panel.git
 cd vpn-bot-panel
 
 # Запустить установку
@@ -54,20 +54,20 @@ sudo ./install.sh
 ```
 bash
 sudo nano /opt/vpnbot/.env
+```
 
 Установите следующие переменные:
-
+```
 env
 BOT_TOKEN=your_telegram_bot_token
 ADMIN_IDS=123456789,987654321
 YOOMONEY_RECEIVER=4100111234567890
 YOOMONEY_TOKEN=your_yoomoney_token
-
 ```
 
 ## 📱 Использование
-###Веб-панель
-URL: https://your_server_ip
+### Веб-панель
+URL: https://your_server_ip /// или домен. если привязан
 
 Логин: admin
 

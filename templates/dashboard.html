@@ -1,0 +1,295 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _('dashboard') }} - VPN Admin{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="fas fa-tachometer-alt"></i> {{ _('dashboard') }}</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <button class="btn btn-sm btn-outline-secondary" onclick="refreshStats()">
+            <i class="fas fa-sync-alt"></i> {{ _('refresh') }}
+        </button>
+    </div>
+</div>
+
+<!-- Statistics Cards -->
+<div class="row mb-4">
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-primary shadow h-100 py-2 stat-card">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                            {{ _('total_users') }}</div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800" id="total-users">
+                            {{ total_users }}
+                        </div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-users fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-success shadow h-100 py-2 stat-card">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                            {{ _('active_subs') }}</div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800" id="active-subs">
+                            {{ total_active_subs }}
+                        </div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-user-check fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-info shadow h-100 py-2 stat-card">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
+                            {{ _('active_panels') }}</div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800" id="active-panels">
+                            {{ active_panels }}/{{ total_panels }}
+                        </div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-server fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-left-warning shadow h-100 py-2 stat-card">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
+                            {{ _('total_revenue') }}</div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800" id="total-revenue">
+                            {{ "%.2f"|format(total_revenue) }} ₽
+                        </div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-ruble-sign fa-2x text-gray-300"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Panel Status -->
+    <div class="col-lg-6 mb-4">
+        <div class="card shadow">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="fas fa-server"></i> {{ _('panel_status') }}
+                </h6>
+                <span class="badge bg-primary">{{ panels_stats|length }} panels</span>
+            </div>
+            <div class="card-body">
+                <div id="panels-status">
+                    {% for panel in panels_stats %}
+                    <div class="d-flex justify-content-between align-items-center mb-2 p-3 border rounded hover-shadow">
+                        <div class="flex-grow-1">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <strong class="d-block">{{ panel.name }}</strong>
+                                    <small class="text-muted">
+                                        <i class="fas fa-map-marker-alt"></i> {{ panel.location }}
+                                    </small>
+                                </div>
+                                <div class="text-end">
+                                    <small class="text-muted d-block">
+                                        {{ panel.clients_count }}/{{ panel.max_clients }} {{ _('clients') }}
+                                    </small>
+                                    <small class="text-muted">
+                                        {{ panel.url|replace('https://', '')|replace('http://', '') }}
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="ms-3">
+                            {% if panel.status == 'online' %}
+                                <span class="badge bg-success">
+                                    <i class="fas fa-circle me-1"></i> Online
+                                </span>
+                            {% else %}
+                                <span class="badge bg-danger">
+                                    <i class="fas fa-circle me-1"></i> Offline
+                                </span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Payments -->
+    <div class="col-lg-6 mb-4">
+        <div class="card shadow">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                <h6 class="m-0 font-weight-bold text-success">
+                    <i class="fas fa-credit-card"></i> {{ _('recent_payments') }}
+                </h6>
+                <span class="badge bg-success">{{ recent_payments|length }} payments</span>
+            </div>
+            <div class="card-body">
+                {% for payment in recent_payments %}
+                <div class="d-flex justify-content-between align-items-center mb-3 p-3 border rounded hover-shadow">
+                    <div>
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-ruble-sign text-success me-2"></i>
+                            <strong class="text-success">{{ "%.2f"|format(payment.amount) }} ₽</strong>
+                        </div>
+                        <small class="text-muted d-block mt-1">
+                            <i class="fas fa-wallet me-1"></i>{{ payment.payment_method|title }}
+                        </small>
+                        <small class="text-muted">
+                            <i class="far fa-clock me-1"></i>{{ payment.completed_at.strftime('%d.%m.%Y %H:%M') }}
+                        </small>
+                    </div>
+                    <span class="badge bg-success">
+                        <i class="fas fa-check me-1"></i> Paid
+                    </span>
+                </div>
+                {% endfor %}
+                {% if not recent_payments %}
+                <div class="text-center py-4">
+                    <i class="fas fa-credit-card fa-3x text-muted mb-3"></i>
+                    <p class="text-muted">No recent payments</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Active Alerts -->
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                <h6 class="m-0 font-weight-bold text-warning">
+                    <i class="fas fa-bell"></i> {{ _('active_alerts') }}
+                </h6>
+                {% if recent_alerts %}
+                <span class="badge bg-warning text-dark">{{ recent_alerts|length }} alerts</span>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                {% if recent_alerts %}
+                    {% for alert in recent_alerts %}
+                    <div class="alert alert-warning d-flex justify-content-between align-items-center">
+                        <div class="flex-grow-1">
+                            <div class="d-flex align-items-center mb-1">
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                <strong class="text-capitalize">{{ alert.alert_type }}</strong>
+                            </div>
+                            <p class="mb-1">{{ alert.message }}</p>
+                            <small class="text-muted">
+                                <i class="far fa-clock me-1"></i>{{ alert.created_at.strftime('%d.%m.%Y %H:%M') }}
+                            </small>
+                        </div>
+                        <button class="btn btn-sm btn-outline-danger ms-3" onclick="resolveAlert({{ alert.id }})">
+                            <i class="fas fa-check me-1"></i> {{ _('resolve') }}
+                        </button>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-bell-slash fa-3x text-muted mb-3"></i>
+                        <p class="text-muted">{{ _('no_alerts') }}</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function refreshStats() {
+    fetch('/api/stats')
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('total-users').textContent = data.total_users;
+            document.getElementById('active-subs').textContent = data.total_active_subs;
+            document.getElementById('active-panels').textContent = data.active_panels;
+            document.getElementById('total-revenue').textContent = data.recent_revenue.toFixed(2) + ' ₽';
+        })
+        .catch(error => console.error('Error refreshing stats:', error));
+}
+
+function resolveAlert(alertId) {
+    if (!confirm('Are you sure you want to resolve this alert?')) {
+        return;
+    }
+    
+    fetch(`/api/alert/${alertId}/resolve`, { 
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Error resolving alert: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Error resolving alert:', error);
+        alert('Error resolving alert');
+    });
+}
+
+// Auto-refresh every 30 seconds
+setInterval(refreshStats, 30000);
+
+// Add hover effects
+document.addEventListener('DOMContentLoaded', function() {
+    const hoverElements = document.querySelectorAll('.hover-shadow');
+    hoverElements.forEach(element => {
+        element.addEventListener('mouseenter', function() {
+            this.style.boxShadow = '0 4px 8px rgba(0,0,0,0.1)';
+            this.style.transform = 'translateY(-2px)';
+        });
+        element.addEventListener('mouseleave', function() {
+            this.style.boxShadow = '';
+            this.style.transform = '';
+        });
+    });
+});
+</script>
+
+<style>
+.hover-shadow {
+    transition: all 0.3s ease;
+}
+.border-left-primary { border-left: 4px solid #4e73df !important; }
+.border-left-success { border-left: 4px solid #1cc88a !important; }
+.border-left-info { border-left: 4px solid #36b9cc !important; }
+.border-left-warning { border-left: 4px solid #f6c23e !important; }
+.text-xs { font-size: 0.7rem; }
+</style>
+{% endblock %}

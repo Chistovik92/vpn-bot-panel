@@ -31,7 +31,9 @@
 curl -L -o install.sh https://raw.githubusercontent.com/your_username/vpn-bot-panel/main/install.sh
 chmod +x install.sh
 sudo ./install.sh
-Ручная установка
+
+**  ### Ручная установка**
+
 bash
 # Клонировать репозиторий
 git clone https://github.com/your_username/vpn-bot-panel.git
@@ -40,11 +42,14 @@ cd vpn-bot-panel
 # Запустить установку
 chmod +x install.sh
 sudo ./install.sh
-⚙️ Настройка
+
+** ## ⚙️ Настройка**
+
 После установки настройте бота:
 
 bash
 sudo nano /opt/vpnbot/.env
+
 Установите следующие переменные:
 
 env

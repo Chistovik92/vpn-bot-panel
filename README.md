@@ -26,27 +26,32 @@
 
 ### Автоматическая установка с GitHub
 
-```bash
+```
+bash
 # Скачать и запустить установщик
 curl -L -o install.sh https://raw.githubusercontent.com/your_username/vpn-bot-panel/main/install.sh
 chmod +x install.sh
-sudo ./install.sh```
+sudo ./install.sh
+```
 
 **  ### Ручная установка**
 
-```bash
+```
+bash
 # Клонировать репозиторий
 git clone https://github.com/your_username/vpn-bot-panel.git
 cd vpn-bot-panel
 
 # Запустить установку
 chmod +x install.sh
-sudo ./install.sh```
+sudo ./install.sh
+```
 
 ** ## ⚙️ Настройка**
 
 После установки настройте бота:
 
+```
 bash
 sudo nano /opt/vpnbot/.env
 
@@ -57,6 +62,9 @@ BOT_TOKEN=your_telegram_bot_token
 ADMIN_IDS=123456789,987654321
 YOOMONEY_RECEIVER=4100111234567890
 YOOMONEY_TOKEN=your_yoomoney_token
+
+```
+
 📱 Использование
 Веб-панель
 URL: https://your_server_ip
@@ -73,18 +81,24 @@ Telegram бот
 После оплаты VPN подключение активируется автоматически
 
 Добавление панелей 3x-ui
+```
 bash
 # Через скрипт
 add_vpn_panel 'Название;URL;Логин;Пароль;Локация'
 
 # Пример
 add_vpn_panel 'Germany #1;https://panel1.com:8080;admin;password123;Germany'
+```
+
 🔄 Обновление
+```
 bash
 # Автоматическое обновление
 sudo /root/vpnbot_update.sh
 
 # Или через веб-панель в разделе System
+```
+
 🛠 Управление службами
 bash
 # Статус служб

@@ -65,31 +65,31 @@ install_system_packages() {
         source /etc/os-release
         case $ID in
             debian|ubuntu)
-                log_info "Обнаружен Debian/Ubuntu, установка python3-venv..."
+                log_info "Обнаружен Debian/Ubuntu, установка пакетов..."
                 apt update
-                apt install -y python3-venv python3-pip git jq
+                apt install -y python3-venv python3-pip git jq curl
                 ;;
             centos|rhel|fedora)
-                log_info "Обнаружен CentOS/RHEL/Fedora, установка python3-venv..."
+                log_info "Обнаружен CentOS/RHEL/Fedora, установка пакетов..."
                 if command -v dnf >/dev/null 2>&1; then
-                    dnf install -y python3-virtualenv python3-pip git jq
+                    dnf install -y python3-virtualenv python3-pip git jq curl
                 else
-                    yum install -y python3-virtualenv python3-pip git jq
+                    yum install -y python3-virtualenv python3-pip git jq curl
                 fi
                 ;;
             arch|manjaro)
-                log_info "Обнаружен Arch/Manjaro, установка python-venv..."
-                pacman -Sy --noconfirm python python-pip git jq
+                log_info "Обнаружен Arch/Manjaro, установка пакетов..."
+                pacman -Sy --noconfirm python python-pip git jq curl
                 ;;
             *)
                 log_error "Неизвестный дистрибутив: $ID"
-                log_info "Установите вручную: python3-venv (или python3-virtualenv), python3-pip, git, jq"
+                log_info "Установите вручную: python3-venv (или python3-virtualenv), python3-pip, git, jq, curl"
                 exit 1
                 ;;
         esac
     else
         log_error "Не удалось определить дистрибутив Linux"
-        log_info "Установите вручную: python3-venv (или python3-virtualenv), python3-pip, git, jq"
+        log_info "Установите вручную: python3-venv (или python3-virtualenv), python3-pip, git, jq, curl"
         exit 1
     fi
     
@@ -99,30 +99,21 @@ install_system_packages() {
 # Проверка установки Git
 check_git() {
     if ! command -v git &>/dev/null; then
-        log_error "Git не установлен. Установите Git сначала:"
-        log_info "Ubuntu/Debian: sudo apt-get install git"
-        log_info "CentOS/RHEL: sudo yum install git"
-        exit 1
+        log_error "Git не установлен"
+        return 1
     fi
     log_success "Git найден: $(git --version)"
+    return 0
 }
 
 # Проверка установки jq
 check_jq() {
     if ! command -v jq &>/dev/null; then
-        log_info "Установка jq для работы с JSON..."
-        if command -v apt-get &>/dev/null; then
-            apt-get update && apt-get install -y jq
-        elif command -v yum &>/dev/null; then
-            yum install -y jq
-        elif command -v dnf &>/dev/null; then
-            dnf install -y jq
-        else
-            log_error "Не удалось установить jq. Установите его вручную."
-            exit 1
-        fi
+        log_error "jq не установлен"
+        return 1
     fi
     log_success "jq установлен"
+    return 0
 }
 
 # Клонирование или обновление репозитория
@@ -278,6 +269,7 @@ install_dependencies() {
                 "aiohttp==3.9.1"
                 "cryptography==41.0.7"
                 "sqlalchemy==2.0.23"
+                "flask==2.3.3"
             )
             
             for package in "${packages[@]}"; do
@@ -340,17 +332,12 @@ set_permissions() {
     log_success "Права доступа настроены"
 }
 
-# Создание systemd сервиса
-create_systemd_service() {
-    log_info "Создание systemd сервиса..."
+# Создание systemd сервиса для бота
+create_bot_service() {
+    log_info "Создание systemd сервиса для бота..."
     
     local service_file="/etc/systemd/system/vpn-bot-panel.service"
     local working_dir=$(pwd)
-    
-    # Проверка, существует ли уже сервис
-    if [ -f "$service_file" ]; then
-        log_info "Systemd сервис уже существует, обновление..."
-    fi
     
     cat > "$service_file" << EOF
 [Unit]
@@ -373,25 +360,117 @@ EOF
 
     systemctl daemon-reload
     systemctl enable vpn-bot-panel.service
-    log_success "Systemd сервис создан и включен"
+    log_success "Systemd сервис для бота создан и включен"
+}
+
+# Создание systemd сервиса для админ-панели
+create_admin_panel_service() {
+    log_info "Создание systemd сервиса для админ-панели..."
+    
+    local service_file="/etc/systemd/system/vpn-admin-panel.service"
+    local working_dir=$(pwd)
+    
+    # Загрузка конфигурации порта
+    local panel_port=5000
+    if [ -f "panel_config.json" ]; then
+        panel_port=$(jq -r '.admin_panel_port // 5000' panel_config.json)
+    fi
+    
+    cat > "$service_file" << EOF
+[Unit]
+Description=VPN Admin Panel
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=$working_dir
+ExecStart=$working_dir/venv/bin/python admin_panel.py
+Restart=always
+RestartSec=3
+StandardOutput=file:$working_dir/logs/admin-panel.log
+StandardError=file:$working_dir/logs/admin-panel-error.log
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    systemctl daemon-reload
+    systemctl enable vpn-admin-panel.service
+    log_success "Systemd сервис для админ-панели создан и включен"
+}
+
+# Запуск сервисов
+start_services() {
+    log_info "Запуск сервисов..."
+    
+    # Загрузка конфигурации панели
+    local panel_port=5000
+    local panel_enabled=true
+    if [ -f "panel_config.json" ]; then
+        panel_port=$(jq -r '.admin_panel_port // 5000' panel_config.json)
+        panel_enabled=$(jq -r '.admin_panel_enabled // true' panel_config.json)
+    fi
+    
+    # Запуск бота
+    if systemctl start vpn-bot-panel.service; then
+        log_success "Сервис бота запущен"
+    else
+        log_error "Не удалось запустить сервис бота"
+    fi
+    
+    # Запуск админ-панели если включена
+    if [ "$panel_enabled" = "true" ]; then
+        if systemctl start vpn-admin-panel.service; then
+            log_success "Сервис админ-панели запущен"
+        else
+            log_error "Не удалось запустить сервис админ-панели"
+        fi
+    else
+        log_info "Админ-панель отключена в настройках"
+    fi
+    
+    sleep 2
+    
+    # Проверка статуса сервисов
+    log_info "Проверка статуса сервисов:"
+    if systemctl is-active --quiet vpn-bot-panel.service; then
+        log_success "Бот: запущен"
+    else
+        log_error "Бот: не запущен"
+    fi
+    
+    if [ "$panel_enabled" = "true" ]; then
+        if systemctl is-active --quiet vpn-admin-panel.service; then
+            log_success "Админ-панель: запущена на порту $panel_port"
+        else
+            log_error "Админ-панель: не запущена"
+        fi
+    fi
 }
 
 # Показать заключительные инструкции
 show_final_instructions() {
+    local panel_port=5000
     local panel_url="http://localhost:5000"
     
     # Загрузка конфигурации если существует
     if [ -f "panel_config.json" ]; then
-        panel_url=$(jq -r '.admin_panel_url // "http://localhost:5000"' panel_config.json 2>/dev/null || echo "http://localhost:5000")
+        panel_port=$(jq -r '.admin_panel_port // 5000' panel_config.json)
+        panel_url=$(jq -r '.admin_panel_url // "http://localhost:5000"' panel_config.json)
     fi
+    
+    # Получение IP адреса сервера
+    local server_ip=$(curl -s http://checkip.amazonaws.com || echo "localhost")
     
     echo ""
     log_success "🎉 Установка завершена успешно!"
     echo ""
     echo "📝 Следующие шаги:"
     echo "   1. Настройте параметры в config.ini"
-    echo "   2. Запустите систему: sudo ./Boot-main-ini (выберите пункт 1)"
+    echo "   2. Управление системой: sudo ./Boot-main-ini"
     echo "   3. Доступ к админ панели: $panel_url"
+    echo "   4. Внешний доступ: http://$server_ip:$panel_port"
     echo ""
     echo "🔐 Рекомендации по безопасности:"
     echo "   - Регулярно меняйте пароли по умолчанию"
@@ -405,6 +484,15 @@ show_final_instructions() {
     echo "   - Логи находятся в директории logs/"
     echo "   - Автозапуск через systemd: systemctl start vpn-bot-panel"
     echo ""
+    
+    # Показать созданные учетные данные если есть
+    if [ -f "install_credentials.txt" ]; then
+        echo "🔑 Созданные учетные данные:"
+        cat install_credentials.txt
+        echo ""
+        log_warning "⚠️  Сохраните эти учетные данные в безопасном месте!"
+        echo ""
+    fi
 }
 
 # Главный процесс установки
@@ -421,8 +509,16 @@ main() {
     install_system_packages
     
     # Проверка и настройка репозитория
-    check_git
-    check_jq
+    if ! check_git; then
+        log_error "Git не установлен. Установка прервана."
+        exit 1
+    fi
+    
+    if ! check_jq; then
+        log_error "jq не установлен. Установка прервана."
+        exit 1
+    fi
+    
     setup_repository
     
     # Проверка необходимых файлов
@@ -449,8 +545,12 @@ main() {
     # Настройка прав доступа
     set_permissions
     
-    # Создание systemd сервиса
-    create_systemd_service
+    # Создание systemd сервисов
+    create_bot_service
+    create_admin_panel_service
+    
+    # Запуск сервисов
+    start_services
     
     # Показать заключительные инструкции
     show_final_instructions

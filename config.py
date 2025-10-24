@@ -1,51 +1,78 @@
 import os
-from datetime import timedelta
+import configparser
+from pathlib import Path
 
-# Настройки бота
-BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN")
-ADMIN_IDS = [int(x.strip()) for x in os.getenv("ADMIN_IDS", "123456789").split(',')]
+class Config:
+    def __init__(self):
+        self.config_file = "config.ini"
+        self.config = configparser.ConfigParser()
+        
+    def create_config(self):
+        """Create default configuration file"""
+        
+        # Default configuration
+        self.config['DATABASE'] = {
+            'path': 'data/vpn_bot.db',
+            'backup_path': 'data/backups/'
+        }
+        
+        self.config['BOT'] = {
+            'token': 'YOUR_BOT_TOKEN_HERE',
+            'admin_id': 'YOUR_ADMIN_ID_HERE'
+        }
+        
+        self.config['PAYMENTS'] = {
+            'yoo_kassa_token': 'YOUR_YOOKASSA_TOKEN_HERE',
+            'crypto_bot_token': 'YOUR_CRYPTO_BOT_TOKEN_HERE'
+        }
+        
+        self.config['VPN'] = {
+            'configs_path': 'data/vpn_configs/',
+            'default_server': 'vpn.example.com'
+        }
+        
+        # Create directories
+        os.makedirs('data/vpn_configs', exist_ok=True)
+        os.makedirs('data/backups', exist_ok=True)
+        
+        # Write configuration file
+        with open(self.config_file, 'w', encoding='utf-8') as configfile:
+            self.config.write(configfile)
+        
+        print(f"✅ Configuration file created: {self.config_file}")
+    
+    def load_config(self):
+        """Load configuration from file"""
+        if not os.path.exists(self.config_file):
+            raise FileNotFoundError(f"Configuration file {self.config_file} not found")
+        
+        self.config.read(self.config_file, encoding='utf-8')
+        return self.config
+    
+    def get_database_path(self):
+        """Get database path from configuration"""
+        if not os.path.exists(self.config_file):
+            self.create_config()
+        
+        self.load_config()
+        db_path = self.config['DATABASE'].get('path', 'data/vpn_bot.db')
+        
+        # Create directory if it doesn't exist
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        
+        return db_path
+    
+    def get_bot_token(self):
+        """Get bot token from configuration"""
+        self.load_config()
+        return self.config['BOT'].get('token')
+    
+    def get_admin_id(self):
+        """Get admin ID from configuration"""
+        self.load_config()
+        return self.config['BOT'].get('admin_id')
 
-# Настройки платежей
-YOOMONEY_RECEIVER = os.getenv("YOOMONEY_RECEIVER", "4100111234567890")
-YOOMONEY_TOKEN = os.getenv("YOOMONEY_TOKEN", "YOUR_YOOMONEY_TOKEN")
-
-# База данных
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///vpn_bot.db")
-
-# Логирование
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
-LOG_FILE = os.getenv("LOG_FILE", "bot.log")
-
-# Мониторинг
-CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "300"))
-ALERT_COOLDOWN = int(os.getenv("ALERT_COOLDOWN", "3600"))
-
-# Веб-панель
-WEB_HOST = os.getenv("WEB_HOST", "0.0.0.0")
-WEB_PORT = int(os.getenv("WEB_PORT", "5000"))
-WEB_USERNAME = os.getenv("WEB_USERNAME", "admin")
-WEB_PASSWORD = os.getenv("WEB_PASSWORD", "admin123")
-WEB_SECRET_KEY = os.getenv("WEB_SECRET_KEY", "your-secret-key-here")
-
-# Язык по умолчанию
-DEFAULT_LANGUAGE = os.getenv("DEFAULT_LANGUAGE", "ru")
-
-# Тарифы
-TARIFFS = {
-    "monthly": {
-        "name_ru": "Месячный",
-        "name_en": "Monthly", 
-        "days": 30,
-        "price": 100.00,
-        "description_ru": "Доступ на 30 дней",
-        "description_en": "Access for 30 days"
-    },
-    "quarterly": {
-        "name_ru": "Квартальный",
-        "name_en": "Quarterly",
-        "days": 90,
-        "price": 250.00,
-        "description_ru": "Доступ на 90 дней (экономия 17%)",
-        "description_en": "Access for 90 days (17% savings)"
-    }
-}
+if __name__ == "__main__":
+    config = Config()
+    config.create_config()
+    print("✅ Config test completed successfully")

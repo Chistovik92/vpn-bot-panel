@@ -56,6 +56,46 @@ check_platform() {
     fi
 }
 
+# Проверка и установка системных пакетов
+install_system_packages() {
+    log_info "Проверка и установка системных пакетов..."
+    
+    # Определение дистрибутива
+    if [ -f /etc/os-release ]; then
+        source /etc/os-release
+        case $ID in
+            debian|ubuntu)
+                log_info "Обнаружен Debian/Ubuntu, установка python3-venv..."
+                apt update
+                apt install -y python3-venv python3-pip git jq
+                ;;
+            centos|rhel|fedora)
+                log_info "Обнаружен CentOS/RHEL/Fedora, установка python3-venv..."
+                if command -v dnf >/dev/null 2>&1; then
+                    dnf install -y python3-virtualenv python3-pip git jq
+                else
+                    yum install -y python3-virtualenv python3-pip git jq
+                fi
+                ;;
+            arch|manjaro)
+                log_info "Обнаружен Arch/Manjaro, установка python-venv..."
+                pacman -Sy --noconfirm python python-pip git jq
+                ;;
+            *)
+                log_error "Неизвестный дистрибутив: $ID"
+                log_info "Установите вручную: python3-venv (или python3-virtualenv), python3-pip, git, jq"
+                exit 1
+                ;;
+        esac
+    else
+        log_error "Не удалось определить дистрибутив Linux"
+        log_info "Установите вручную: python3-venv (или python3-virtualenv), python3-pip, git, jq"
+        exit 1
+    fi
+    
+    log_success "Системные пакеты установлены"
+}
+
 # Проверка установки Git
 check_git() {
     if ! command -v git &>/dev/null; then
@@ -75,6 +115,8 @@ check_jq() {
             apt-get update && apt-get install -y jq
         elif command -v yum &>/dev/null; then
             yum install -y jq
+        elif command -v dnf &>/dev/null; then
+            dnf install -y jq
         else
             log_error "Не удалось установить jq. Установите его вручную."
             exit 1
@@ -170,8 +212,26 @@ create_venv() {
     log_info "Создание виртуального окружения Python..."
     
     if [ ! -d "venv" ]; then
-        $PYTHON_CMD -m venv venv
-        log_success "Виртуальное окружение создано"
+        # Попытка создать виртуальное окружение
+        if $PYTHON_CMD -m venv venv 2>/dev/null; then
+            log_success "Виртуальное окружение создано"
+        else
+            log_error "Не удалось создать виртуальное окружение"
+            log_info "Попытка установить необходимые пакеты..."
+            install_system_packages
+            
+            # Повторная попытка после установки пакетов
+            log_info "Повторная попытка создания виртуального окружения..."
+            if $PYTHON_CMD -m venv venv; then
+                log_success "Виртуальное окружение создано после установки пакетов"
+            else
+                log_error "Не удалось создать виртуальное окружение даже после установки пакетов"
+                log_info "Попробуйте установить вручную:"
+                log_info "Ubuntu/Debian: sudo apt install python3-venv"
+                log_info "CentOS/RHEL: sudo yum install python3-virtualenv"
+                exit 1
+            fi
+        fi
     else
         log_info "Виртуальное окружение уже существует"
     fi
@@ -285,8 +345,14 @@ create_systemd_service() {
     log_info "Создание systemd сервиса..."
     
     local service_file="/etc/systemd/system/vpn-bot-panel.service"
+    local working_dir=$(pwd)
     
-    cat > $service_file << EOF
+    # Проверка, существует ли уже сервис
+    if [ -f "$service_file" ]; then
+        log_info "Systemd сервис уже существует, обновление..."
+    fi
+    
+    cat > "$service_file" << EOF
 [Unit]
 Description=VPN Bot Panel
 After=network.target
@@ -294,10 +360,12 @@ After=network.target
 [Service]
 Type=simple
 User=root
-WorkingDirectory=$(pwd)
-ExecStart=$(pwd)/venv/bin/python bot.py
+WorkingDirectory=$working_dir
+ExecStart=$working_dir/venv/bin/python bot.py
 Restart=always
 RestartSec=3
+StandardOutput=file:$working_dir/logs/bot.log
+StandardError=file:$working_dir/logs/bot-error.log
 
 [Install]
 WantedBy=multi-user.target
@@ -314,7 +382,7 @@ show_final_instructions() {
     
     # Загрузка конфигурации если существует
     if [ -f "panel_config.json" ]; then
-        panel_url=$(jq -r '.admin_panel_url // "http://localhost:5000"' panel_config.json)
+        panel_url=$(jq -r '.admin_panel_url // "http://localhost:5000"' panel_config.json 2>/dev/null || echo "http://localhost:5000")
     fi
     
     echo ""
@@ -322,7 +390,7 @@ show_final_instructions() {
     echo ""
     echo "📝 Следующие шаги:"
     echo "   1. Настройте параметры в config.ini"
-    echo "   2. Запустите бота: ./Boot-main-ini (выберите пункт 1)"
+    echo "   2. Запустите систему: sudo ./Boot-main-ini (выберите пункт 1)"
     echo "   3. Доступ к админ панели: $panel_url"
     echo ""
     echo "🔐 Рекомендации по безопасности:"
@@ -332,9 +400,10 @@ show_final_instructions() {
     echo "   - Регулярно делайте резервные копии базы данных"
     echo ""
     echo "💡 Советы:"
-    echo "   - Используйте ./Boot-main-ini для управления системой"
+    echo "   - Используйте sudo ./Boot-main-ini для управления системой"
     echo "   - Проверьте README.md для подробных инструкций"
     echo "   - Логи находятся в директории logs/"
+    echo "   - Автозапуск через systemd: systemctl start vpn-bot-panel"
     echo ""
 }
 
@@ -347,6 +416,9 @@ main() {
     
     # Проверка платформы
     check_platform
+    
+    # Установка системных пакетов (включая python3-venv)
+    install_system_packages
     
     # Проверка и настройка репозитория
     check_git

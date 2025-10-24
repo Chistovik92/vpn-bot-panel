@@ -1,7 +1,3 @@
-
-### 2. install.sh
-
-```bash
 #!/bin/bash
 
 set -e

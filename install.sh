@@ -1,18 +1,18 @@
 #!/bin/bash
 
-# VPN Bot Panel Installation Script
-set -e  # Exit on any error
+# VPN Bot Panel - Скрипт установки
+set -e
 
-echo "🚀 Starting VPN Bot Panel installation..."
+echo "🚀 Запуск установки VPN Bot Panel..."
 
-# Colors for output
+# Цвета для вывода
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Logging functions
+# Функции логирования
 log_info() {
     echo -e "${BLUE}ℹ️ $1${NC}"
 }
@@ -29,94 +29,123 @@ log_error() {
     echo -e "${RED}❌ $1${NC}"
 }
 
-# Check if running as root
+# Проверка прав root
 check_root() {
     if [[ $EUID -eq 0 ]]; then
-        log_warning "Running as root user. It's recommended to run as regular user."
-        read -p "Continue as root? (y/N): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            log_info "Exiting. Please run as regular user."
+        log_success "Проверка прав: root доступ подтвержден"
+    else
+        log_error "Этот скрипт требует прав root для выполнения"
+        log_info "Запустите скрипт с помощью: sudo $0"
+        exit 1
+    fi
+}
+
+# Проверка платформы
+check_platform() {
+    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        log_success "Платформа: Linux"
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+        log_error "macOS не поддерживается"
+        exit 1
+    elif [[ "$OSTYPE" == "cygwin" ]] || [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "win32" ]]; then
+        log_error "Windows не поддерживается этим скриптом"
+        log_info "Для Windows используйте install.bat"
+        exit 1
+    else
+        log_warning "Неизвестная платформа: $OSTYPE"
+    fi
+}
+
+# Проверка установки Git
+check_git() {
+    if ! command -v git &>/dev/null; then
+        log_error "Git не установлен. Установите Git сначала:"
+        log_info "Ubuntu/Debian: sudo apt-get install git"
+        log_info "CentOS/RHEL: sudo yum install git"
+        exit 1
+    fi
+    log_success "Git найден: $(git --version)"
+}
+
+# Проверка установки jq
+check_jq() {
+    if ! command -v jq &>/dev/null; then
+        log_info "Установка jq для работы с JSON..."
+        if command -v apt-get &>/dev/null; then
+            apt-get update && apt-get install -y jq
+        elif command -v yum &>/dev/null; then
+            yum install -y jq
+        else
+            log_error "Не удалось установить jq. Установите его вручную."
             exit 1
         fi
     fi
+    log_success "jq установлен"
 }
 
-# Check if Git is installed
-check_git() {
-    if ! command -v git &>/dev/null; then
-        log_error "Git is not installed. Please install git first:"
-        log_info "Ubuntu/Debian: sudo apt-get install git"
-        log_info "CentOS/RHEL: sudo yum install git"
-        log_info "macOS: brew install git"
-        exit 1
-    fi
-    log_success "Git found: $(git --version)"
-}
-
-# Clone or update repository
+# Клонирование или обновление репозитория
 setup_repository() {
     local repo_url="https://github.com/Chistovik92/vpn-bot-panel.git"
     local project_dir="vpn-bot-panel"
     
     if [ -d "$project_dir" ]; then
-        log_info "Project directory already exists, updating..."
+        log_info "Директория проекта уже существует, обновление..."
         cd "$project_dir"
         git pull origin main
-        log_success "Repository updated"
+        log_success "Репозиторий обновлен"
     else
-        log_info "Cloning repository from $repo_url..."
+        log_info "Клонирование репозитория из $repo_url..."
         git clone "$repo_url" "$project_dir"
         cd "$project_dir"
-        log_success "Repository cloned successfully"
+        log_success "Репозиторий успешно клонирован"
     fi
     
-    # Show current directory and files
-    log_info "Current directory: $(pwd)"
-    log_info "Files in directory:"
+    # Показать текущую директорию и файлы
+    log_info "Текущая директория: $(pwd)"
+    log_info "Файлы в директории:"
     ls -la
 }
 
-# Check if Python is installed
+# Проверка установки Python
 check_python() {
-    log_info "Checking Python installation..."
+    log_info "Проверка установки Python..."
     if command -v python3 &>/dev/null; then
         PYTHON_CMD="python3"
-        log_success "Python 3 found: $(python3 --version)"
+        log_success "Python 3 найден: $(python3 --version)"
     elif command -v python &>/dev/null; then
         PYTHON_VERSION=$(python --version 2>&1)
         if [[ $PYTHON_VERSION == *"Python 3"* ]]; then
             PYTHON_CMD="python"
-            log_success "Python found: $PYTHON_VERSION"
+            log_success "Python найден: $PYTHON_VERSION"
         else
-            log_error "Python 3 is required but not found. Please install Python 3.8 or higher."
+            log_error "Требуется Python 3.8 или выше, но не найден."
             exit 1
         fi
     else
-        log_error "Python is not installed. Please install Python 3.8 or higher."
+        log_error "Python не установлен. Установите Python 3.8 или выше."
         exit 1
     fi
 }
 
-# Check Python version
+# Проверка версии Python
 check_python_version() {
-    log_info "Checking Python version..."
+    log_info "Проверка версии Python..."
     PYTHON_VERSION=$($PYTHON_CMD -c "import sys; print('.'.join(map(str, sys.version_info[:3])))")
     REQUIRED_VERSION="3.8"
     
     $PYTHON_CMD -c "import sys; exit(0) if tuple(map(int, sys.version_info[:2])) >= tuple(map(int, '$REQUIRED_VERSION'.split('.'))) else exit(1)"
     
     if [ $? -eq 0 ]; then
-        log_success "Python version $PYTHON_VERSION is compatible"
+        log_success "Версия Python $PYTHON_VERSION совместима"
     else
-        log_error "Python $REQUIRED_VERSION or higher is required. Current version: $PYTHON_VERSION"
+        log_error "Требуется Python $REQUIRED_VERSION или выше. Текущая версия: $PYTHON_VERSION"
         exit 1
     fi
 }
 
-# Check if required files exist
+# Проверка существования необходимых файлов
 check_required_files() {
-    log_info "Checking required files..."
+    log_info "Проверка необходимых файлов..."
     
     local required_files=("install.py" "database.py" "config.py" "requirements.txt")
     local missing_files=()
@@ -128,61 +157,61 @@ check_required_files() {
     done
     
     if [ ${#missing_files[@]} -ne 0 ]; then
-        log_error "Missing required files: ${missing_files[*]}"
+        log_error "Отсутствуют необходимые файлы: ${missing_files[*]}"
         return 1
     fi
     
-    log_success "All required files found"
+    log_success "Все необходимые файлы найдены"
     return 0
 }
 
-# Create virtual environment
+# Создание виртуального окружения
 create_venv() {
-    log_info "Creating Python virtual environment..."
+    log_info "Создание виртуального окружения Python..."
     
     if [ ! -d "venv" ]; then
         $PYTHON_CMD -m venv venv
-        log_success "Virtual environment created"
+        log_success "Виртуальное окружение создано"
     else
-        log_info "Virtual environment already exists"
+        log_info "Виртуальное окружение уже существует"
     fi
 }
 
-# Activate virtual environment and get Python path
+# Активация виртуального окружения
 activate_venv() {
     if [ -f "venv/bin/activate" ]; then
         source venv/bin/activate
         PYTHON_CMD="venv/bin/python"
-        log_success "Virtual environment activated"
+        log_success "Виртуальное окружение активировано"
     elif [ -f "venv/Scripts/activate" ]; then
         source venv/Scripts/activate
         PYTHON_CMD="venv/Scripts/python"
-        log_success "Virtual environment activated"
+        log_success "Виртуальное окружение активировано"
     else
-        log_warning "Could not activate virtual environment, using system Python"
+        log_warning "Не удалось активировать виртуальное окружение, используется системный Python"
     fi
 }
 
-# Install dependencies
+# Установка зависимостей
 install_dependencies() {
-    log_info "Installing dependencies..."
+    log_info "Установка зависимостей..."
     
-    # Upgrade pip first
-    log_info "Upgrading pip..."
+    # Обновление pip сначала
+    log_info "Обновление pip..."
     if ! $PYTHON_CMD -m pip install --upgrade pip; then
-        log_warning "pip upgrade failed, continuing with existing version..."
+        log_warning "Не удалось обновить pip, продолжение с текущей версией..."
     fi
     
-    # Install requirements
+    # Установка требований
     if [ -f "requirements.txt" ]; then
-        log_info "Installing from requirements.txt..."
+        log_info "Установка из requirements.txt..."
         if $PYTHON_CMD -m pip install -r requirements.txt; then
-            log_success "Dependencies installed successfully"
+            log_success "Зависимости успешно установлены"
         else
-            log_error "Failed to install some dependencies"
-            log_info "Trying to install packages individually..."
+            log_error "Не удалось установить некоторые зависимости"
+            log_info "Попытка установки пакетов по одному..."
             
-            # Try installing packages one by one
+            # Попробовать установить пакеты по одному
             packages=(
                 "python-telegram-bot==20.7"
                 "yookassa==3.7.1" 
@@ -192,47 +221,50 @@ install_dependencies() {
             )
             
             for package in "${packages[@]}"; do
-                log_info "Installing $package..."
+                log_info "Установка $package..."
                 if $PYTHON_CMD -m pip install "$package"; then
-                    log_success "Installed $package"
+                    log_success "Установлен $package"
                 else
-                    log_warning "Failed to install $package"
+                    log_warning "Не удалось установить $package"
                 fi
             done
         fi
     else
-        log_error "requirements.txt not found"
+        log_error "requirements.txt не найден"
         exit 1
     fi
 }
 
-# Run the installation script
+# Запуск скрипта установки
 run_installation() {
-    log_info "Running installation script..."
+    log_info "Запуск скрипта установки..."
     
-    # Set PYTHONPATH to current directory
+    # Установка PYTHONPATH в текущую директорию
     export PYTHONPATH=$(pwd):$PYTHONPATH
     
     if $PYTHON_CMD install.py; then
-        log_success "Installation completed successfully"
+        log_success "Установка завершена успешно"
     else
-        log_error "Installation failed"
+        log_error "Ошибка установки"
         exit 1
     fi
 }
 
-# Set proper permissions
+# Настройка прав доступа
 set_permissions() {
-    log_info "Setting secure file permissions..."
+    log_info "Настройка прав доступа к файлам..."
     
-    # Make Python scripts executable
+    # Сделать Python скрипты исполняемыми
     chmod +x *.py 2>/dev/null || true
     
-    # Make sure data directories are writable with secure permissions
+    # Сделать главный скрипт исполняемым
+    chmod +x Boot-main-ini 2>/dev/null || true
+    
+    # Убедиться, что директории данных доступны для записи с безопасными правами
     mkdir -p data/vpn_configs data/backups logs
     chmod 755 data data/vpn_configs data/backups logs
     
-    # Set secure permissions for sensitive files
+    # Установить безопасные права для чувствительных файлов
     if [ -f "config.ini" ]; then
         chmod 600 config.ini
     fi
@@ -241,69 +273,116 @@ set_permissions() {
         chmod 600 data/vpn_bot.db
     fi
     
-    log_success "Secure permissions set"
-}
-
-# Display next steps
-show_next_steps() {
-    echo ""
-    log_success "🎉 Installation completed successfully!"
-    echo ""
-    echo "📝 Next steps:"
-    echo "   1. Review and edit config.ini file with your settings"
-    echo "   2. Start the bot with: $PYTHON_CMD bot.py"
-    echo "   3. Access admin panel with the credentials you created"
-    echo ""
-    echo "🔐 Security recommendations:"
-    echo "   - Change default passwords regularly"
-    echo "   - Keep your server updated"
-    echo "   - Monitor logs for suspicious activity"
-    echo "   - Regularly backup your database"
-    echo ""
-    echo "💡 Tips:"
-    echo "   - To activate the virtual environment: source venv/bin/activate (Linux/Mac)"
-    echo "   - Check the README.md for detailed usage instructions"
-    echo ""
-}
-
-# Main installation process
-main() {
-    log_info "Starting VPN Bot Panel installation..."
+    if [ -f "panel_config.json" ]; then
+        chmod 600 panel_config.json
+    fi
     
-    # Check if not running as root (warning only)
+    log_success "Права доступа настроены"
+}
+
+# Создание systemd сервиса
+create_systemd_service() {
+    log_info "Создание systemd сервиса..."
+    
+    local service_file="/etc/systemd/system/vpn-bot-panel.service"
+    
+    cat > $service_file << EOF
+[Unit]
+Description=VPN Bot Panel
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=$(pwd)
+ExecStart=$(pwd)/venv/bin/python bot.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    systemctl daemon-reload
+    systemctl enable vpn-bot-panel.service
+    log_success "Systemd сервис создан и включен"
+}
+
+# Показать заключительные инструкции
+show_final_instructions() {
+    local panel_url="http://localhost:5000"
+    
+    # Загрузка конфигурации если существует
+    if [ -f "panel_config.json" ]; then
+        panel_url=$(jq -r '.admin_panel_url // "http://localhost:5000"' panel_config.json)
+    fi
+    
+    echo ""
+    log_success "🎉 Установка завершена успешно!"
+    echo ""
+    echo "📝 Следующие шаги:"
+    echo "   1. Настройте параметры в config.ini"
+    echo "   2. Запустите бота: ./Boot-main-ini (выберите пункт 1)"
+    echo "   3. Доступ к админ панели: $panel_url"
+    echo ""
+    echo "🔐 Рекомендации по безопасности:"
+    echo "   - Регулярно меняйте пароли по умолчанию"
+    echo "   - Обновляйте сервер регулярно"
+    echo "   - Мониторьте логи на подозрительную активность"
+    echo "   - Регулярно делайте резервные копии базы данных"
+    echo ""
+    echo "💡 Советы:"
+    echo "   - Используйте ./Boot-main-ini для управления системой"
+    echo "   - Проверьте README.md для подробных инструкций"
+    echo "   - Логи находятся в директории logs/"
+    echo ""
+}
+
+# Главный процесс установки
+main() {
+    log_info "Начало установки VPN Bot Panel..."
+    
+    # Проверка прав
     check_root
     
-    # Check and setup repository first
+    # Проверка платформы
+    check_platform
+    
+    # Проверка и настройка репозитория
     check_git
+    check_jq
     setup_repository
     
-    # Check required files
+    # Проверка необходимых файлов
     if ! check_required_files; then
-        log_error "Required files are missing even after cloning repository."
-        log_info "Please check the repository structure and try again."
+        log_error "Необходимые файлы отсутствуют даже после клонирования репозитория."
+        log_info "Пожалуйста, проверьте структуру репозитория и попробуйте снова."
         exit 1
     fi
     
-    # Check Python
+    # Проверка Python
     check_python
     check_python_version
     
-    # Create and activate virtual environment
+    # Создание и активация виртуального окружения
     create_venv
     activate_venv
     
-    # Install dependencies
+    # Установка зависимостей
     install_dependencies
     
-    # Run installation
+    # Запуск установки
     run_installation
     
-    # Set permissions
+    # Настройка прав доступа
     set_permissions
     
-    # Show next steps
-    show_next_steps
+    # Создание systemd сервиса
+    create_systemd_service
+    
+    # Показать заключительные инструкции
+    show_final_instructions
 }
 
-# Run main function
+# Запуск главной функции
 main "$@"

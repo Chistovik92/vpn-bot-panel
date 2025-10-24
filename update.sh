@@ -1,76 +1,214 @@
 #!/bin/bash
 
+# VPN Bot Panel - Скрипт обновления
 set -e
 
-print_color() {
-    echo -e "${2}${1}\033[0m"
-}
+echo "🔄 Запуск обновления VPN Bot Panel..."
 
+# Цвета
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+NC='\033[0m'
 
-PROJECT_DIR="/opt/vpnbot"
-BACKUP_DIR="/opt/vpnbot_backup_$(date +%Y%m%d_%H%M%S)"
-TEMP_DIR=$(mktemp -d)
+log_info() {
+    echo -e "${BLUE}ℹ️ $1${NC}"
+}
 
-echo "=================================================="
-print_color " VPN Bot Update Script" "$BLUE"
-echo "=================================================="
+log_success() {
+    echo -e "${GREEN}✅ $1${NC}"
+}
 
-# Создание бэкапа
-print_color "📦 Creating backup..." "$BLUE"
-mkdir -p "$BACKUP_DIR"
-cp -r $PROJECT_DIR/*.py $PROJECT_DIR/requirements.txt $PROJECT_DIR/templates "$BACKUP_DIR/" 2>/dev/null || true
-print_color "✅ Backup created: $BACKUP_DIR" "$GREEN"
+log_warning() {
+    echo -e "${YELLOW}⚠️ $1${NC}"
+}
 
-# Остановка служб
-print_color "🛑 Stopping services..." "$BLUE"
-systemctl stop vpnbot vpnbot-web
+log_error() {
+    echo -e "${RED}❌ $1${NC}"
+}
 
-# Скачивание обновлений с GitHub
-print_color "📥 Downloading updates from GitHub..." "$BLUE"
-cd $TEMP_DIR
-wget -q https://github.com/your_username/vpn-bot-panel/archive/main.tar.gz -O update.tar.gz
-tar -xzf update.tar.gz
-cd vpn-bot-panel-main
+# Проверка прав root
+check_root() {
+    if [[ $EUID -ne 0 ]]; then
+        log_error "Этот скрипт требует прав root для выполнения"
+        log_info "Запустите скрипт с помощью: sudo $0"
+        exit 1
+    fi
+}
 
-# Копирование обновленных файлов
-print_color "🔄 Copying updated files..." "$BLUE"
-cp -f *.py $PROJECT_DIR/
-cp -f requirements.txt $PROJECT_DIR/
-cp -rf templates/* $PROJECT_DIR/templates/ 2>/dev/null || true
+# Проверка директории проекта
+check_project_dir() {
+    if [ ! -f "install.py" ] && [ ! -f "database.py" ]; then
+        log_error "Не в директории VPN Bot Panel."
+        log_info "Пожалуйста, запустите этот скрипт из директории проекта."
+        exit 1
+    fi
+}
 
-# Установка прав
-chown -R vpnbot:vpnbot $PROJECT_DIR
+# Создание резервной копии перед обновлением
+create_backup() {
+    log_info "Создание резервной копии перед обновлением..."
+    local backup_dir="backups/update_backup_$(date +%Y%m%d_%H%M%S)"
+    mkdir -p "$backup_dir"
+    
+    if [ -f "data/vpn_bot.db" ]; then
+        cp "data/vpn_bot.db" "$backup_dir/" && log_success "База данных скопирована"
+    fi
+    
+    if [ -f "config.ini" ]; then
+        cp "config.ini" "$backup_dir/" && log_success "Конфигурация скопирована"
+    fi
+    
+    if [ -f "panel_config.json" ]; then
+        cp "panel_config.json" "$backup_dir/" && log_success "Конфигурация панели скопирована"
+    fi
+    
+    log_success "Резервная копия создана в $backup_dir"
+}
+
+# Остановка сервисов
+stop_services() {
+    log_info "Остановка сервисов..."
+    
+    if systemctl is-active --quiet vpn-bot-panel.service; then
+        systemctl stop vpn-bot-panel.service
+        log_success "Сервис бота остановлен"
+    fi
+    
+    # Остановка процессов Python бота
+    pkill -f "python bot.py" 2>/dev/null && log_success "Процессы бота остановлены" || log_info "Процессы бота не запущены"
+}
+
+# Обновление кода
+update_code() {
+    log_info "Обновление кода из репозитория..."
+    
+    if git pull origin main; then
+        log_success "Код успешно обновлен"
+    else
+        log_error "Ошибка при обновлении кода"
+        exit 1
+    fi
+}
 
 # Обновление зависимостей
-print_color "📦 Updating dependencies..." "$BLUE"
-sudo -u vpnbot $PROJECT_DIR/venv/bin/pip install --upgrade pip
-sudo -u vpnbot $PROJECT_DIR/venv/bin/pip install -r $PROJECT_DIR/requirements.txt
+update_dependencies() {
+    log_info "Обновление зависимостей..."
+    
+    if [ -d "venv" ]; then
+        source venv/bin/activate
+        pip install --upgrade pip
+        pip install -r requirements.txt
+        log_success "Зависимости обновлены"
+    else
+        log_error "Виртуальное окружение не найдено"
+        exit 1
+    fi
+}
 
-# Обновление базы данных если нужно
-print_color "🗃️ Updating database..." "$BLUE"
-sudo -u vpnbot $PROJECT_DIR/venv/bin/python3 -c "
-import sys
-sys.path.append('/opt/vpnbot')
-from database import init_db
-init_db()
-print('Database updated')
-"
+# Обновление базы данных
+update_database() {
+    log_info "Обновление базы данных..."
+    
+    if [ -d "venv" ]; then
+        source venv/bin/activate
+        python -c "from database import Database; db = Database(); db.init_db()"
+        log_success "База данных обновлена"
+    else
+        log_error "Виртуальное окружение не найдено"
+        exit 1
+    fi
+}
 
-# Запуск служб
-print_color "🚀 Starting services..." "$BLUE"
-systemctl start vpnbot vpnbot-web
+# Обновление прав доступа
+update_permissions() {
+    log_info "Обновление прав доступа..."
+    
+    chmod +x Boot-main-ini 2>/dev/null || true
+    chmod +x *.py 2>/dev/null || true
+    
+    if [ -f "config.ini" ]; then
+        chmod 600 config.ini
+    fi
+    
+    if [ -f "data/vpn_bot.db" ]; then
+        chmod 600 data/vpn_bot.db
+    fi
+    
+    log_success "Права доступа обновлены"
+}
 
-# Очистка временных файлов
-rm -rf $TEMP_DIR
+# Перезапуск сервисов
+restart_services() {
+    log_info "Перезапуск сервисов..."
+    
+    if systemctl start vpn-bot-panel.service; then
+        log_success "Сервис бота запущен"
+    else
+        log_warning "Не удалось запустить systemd сервис, запуск вручную..."
+        source venv/bin/activate
+        nohup python bot.py > logs/bot.log 2>&1 &
+        log_success "Бот запущен вручную"
+    fi
+}
 
-# Проверка статуса
-sleep 3
-print_color "🔍 Checking service status..." "$BLUE"
-systemctl is-active vpnbot && print_color "✅ Bot service running" "$GREEN" || print_color "❌ Bot service failed" "$RED"
-systemctl is-active vpnbot-web && print_color "✅ Web panel service running" "$GREEN" || print_color "❌ Web panel service failed" "$RED"
+# Показать заключительную информацию
+show_final_info() {
+    echo ""
+    log_success "🎉 Обновление завершено успешно!"
+    echo ""
+    log_info "Обновленные компоненты:"
+    echo "   ✅ Код приложения"
+    echo "   ✅ Зависимости Python"
+    echo "   ✅ Структура базы данных"
+    echo "   ✅ Права доступа к файлам"
+    echo ""
+    log_info "Статус сервисов:"
+    if systemctl is-active --quiet vpn-bot-panel.service; then
+        echo "   Бот: запущен"
+    else
+        echo "   Бот: остановлен"
+    fi
+    echo ""
+    log_info "Резервная копия создана в директории backups/"
+    echo ""
+}
 
-print_color "✅ Update completed successfully!" "$GREEN"
+# Главный процесс обновления
+main() {
+    log_info "Начало процесса обновления VPN Bot Panel..."
+    
+    # Проверка директории проекта
+    check_project_dir
+    
+    # Проверка прав
+    check_root
+    
+    # Создание резервной копии
+    create_backup
+    
+    # Остановка сервисов
+    stop_services
+    
+    # Обновление кода
+    update_code
+    
+    # Обновление зависимостей
+    update_dependencies
+    
+    # Обновление базы данных
+    update_database
+    
+    # Обновление прав доступа
+    update_permissions
+    
+    # Перезапуск сервисов
+    restart_services
+    
+    # Заключительная информация
+    show_final_info
+}
+
+# Запуск главной функции
+main "$@"

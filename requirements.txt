@@ -1,5 +1,5 @@
 python-telegram-bot==20.7
-yookassa==1.0.0
+yookassa==3.7.1
 aiohttp==3.9.1
 cryptography==41.0.7
-sqlite3
+sqlalchemy==2.0.23

@@ -29,6 +29,19 @@ log_error() {
     echo -e "${RED}❌ $1${NC}"
 }
 
+# Check if running as root
+check_root() {
+    if [[ $EUID -eq 0 ]]; then
+        log_warning "Running as root user. It's recommended to run as regular user."
+        read -p "Continue as root? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            log_info "Exiting. Please run as regular user."
+            exit 1
+        fi
+    fi
+}
+
 # Check if Git is installed
 check_git() {
     if ! command -v git &>/dev/null; then
@@ -154,16 +167,38 @@ activate_venv() {
 install_dependencies() {
     log_info "Installing dependencies..."
     
-    # Upgrade pip first (but don't fail if it doesn't work)
-    $PYTHON_CMD -m pip install --upgrade pip || log_warning "pip upgrade failed, continuing..."
+    # Upgrade pip first
+    log_info "Upgrading pip..."
+    if ! $PYTHON_CMD -m pip install --upgrade pip; then
+        log_warning "pip upgrade failed, continuing with existing version..."
+    fi
     
     # Install requirements
     if [ -f "requirements.txt" ]; then
-        $PYTHON_CMD -m pip install -r requirements.txt
-        if [ $? -eq 0 ]; then
-            log_success "Dependencies installed"
+        log_info "Installing from requirements.txt..."
+        if $PYTHON_CMD -m pip install -r requirements.txt; then
+            log_success "Dependencies installed successfully"
         else
-            log_warning "Some dependencies failed to install, but continuing with installation..."
+            log_error "Failed to install some dependencies"
+            log_info "Trying to install packages individually..."
+            
+            # Try installing packages one by one
+            packages=(
+                "python-telegram-bot==20.7"
+                "yookassa==3.7.1" 
+                "aiohttp==3.9.1"
+                "cryptography==41.0.7"
+                "sqlalchemy==2.0.23"
+            )
+            
+            for package in "${packages[@]}"; do
+                log_info "Installing $package..."
+                if $PYTHON_CMD -m pip install "$package"; then
+                    log_success "Installed $package"
+                else
+                    log_warning "Failed to install $package"
+                fi
+            done
         fi
     else
         log_error "requirements.txt not found"
@@ -178,7 +213,6 @@ run_installation() {
     # Set PYTHONPATH to current directory
     export PYTHONPATH=$(pwd):$PYTHONPATH
     
-    # Run interactive installation
     if $PYTHON_CMD install.py; then
         log_success "Installation completed successfully"
     else
@@ -189,16 +223,25 @@ run_installation() {
 
 # Set proper permissions
 set_permissions() {
-    log_info "Setting file permissions..."
+    log_info "Setting secure file permissions..."
     
     # Make Python scripts executable
     chmod +x *.py 2>/dev/null || true
     
-    # Make sure data directories are writable
-    mkdir -p data/vpn_configs data/backups
-    chmod 755 data data/vpn_configs data/backups
+    # Make sure data directories are writable with secure permissions
+    mkdir -p data/vpn_configs data/backups logs
+    chmod 755 data data/vpn_configs data/backups logs
     
-    log_success "Permissions set"
+    # Set secure permissions for sensitive files
+    if [ -f "config.ini" ]; then
+        chmod 600 config.ini
+    fi
+    
+    if [ -f "data/vpn_bot.db" ]; then
+        chmod 600 data/vpn_bot.db
+    fi
+    
+    log_success "Secure permissions set"
 }
 
 # Display next steps
@@ -211,8 +254,14 @@ show_next_steps() {
     echo "   2. Start the bot with: $PYTHON_CMD bot.py"
     echo "   3. Access admin panel with the credentials you created"
     echo ""
+    echo "🔐 Security recommendations:"
+    echo "   - Change default passwords regularly"
+    echo "   - Keep your server updated"
+    echo "   - Monitor logs for suspicious activity"
+    echo "   - Regularly backup your database"
+    echo ""
     echo "💡 Tips:"
-    echo "   - To activate the virtual environment: source venv/bin/activate (Linux/Mac) or venv\\Scripts\\activate (Windows)"
+    echo "   - To activate the virtual environment: source venv/bin/activate (Linux/Mac)"
     echo "   - Check the README.md for detailed usage instructions"
     echo ""
 }
@@ -220,6 +269,9 @@ show_next_steps() {
 # Main installation process
 main() {
     log_info "Starting VPN Bot Panel installation..."
+    
+    # Check if not running as root (warning only)
+    check_root
     
     # Check and setup repository first
     check_git

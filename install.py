@@ -25,26 +25,34 @@ def install_dependencies():
     """Install required Python packages"""
     print("📦 Installing dependencies...")
     try:
+        # Обновляем pip
         subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "pip"])
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"])
-        print("✅ Dependencies installed")
+        
+        # Устанавливаем зависимости по одной для лучшего контроля
+        packages = [
+            "python-telegram-bot==20.7",
+            "yookassa==3.7.1",
+            "aiohttp==3.9.1", 
+            "cryptography==41.0.7",
+            "sqlalchemy==2.0.23"
+        ]
+        
+        for package in packages:
+            print(f"📦 Installing {package}...")
+            subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+        
+        print("✅ All dependencies installed successfully")
+        
     except subprocess.CalledProcessError as e:
         print(f"❌ Failed to install dependencies: {e}")
-        print("🔄 Trying alternative installation method...")
+        print("🔄 Trying to install from requirements.txt...")
         try:
-            # Попробуем установить пакеты по одному
-            packages = [
-                "python-telegram-bot==20.7",
-                "yookassa==1.0.0", 
-                "aiohttp==3.9.1",
-                "cryptography==41.0.7"
-            ]
-            for package in packages:
-                subprocess.check_call([sys.executable, "-m", "pip", "install", package])
-            print("✅ Dependencies installed (alternative method)")
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"])
+            print("✅ Dependencies installed from requirements.txt")
         except subprocess.CalledProcessError:
-            print("❌ Failed to install dependencies with alternative method")
-            sys.exit(1)
+            print("❌ Failed to install dependencies completely")
+            print("⚠️  Some features may not work properly")
+            # Не выходим, продолжаем установку
 
 def create_config():
     """Create configuration file"""
@@ -74,8 +82,17 @@ def generate_password(length=12):
     return ''.join(secrets.choice(alphabet) for _ in range(length))
 
 def hash_password(password):
-    """Hash password using SHA-256"""
-    return hashlib.sha256(password.encode()).hexdigest()
+    """Hash password using SHA-256 with salt"""
+    salt = os.urandom(32)
+    password_hash = hashlib.pbkdf2_hmac('sha256', password.encode(), salt, 100000)
+    return salt.hex() + ':' + password_hash.hex()
+
+def verify_password(stored_password, provided_password):
+    """Verify a password against stored hash"""
+    salt_hex, password_hash_hex = stored_password.split(':')
+    salt = bytes.fromhex(salt_hex)
+    new_hash = hashlib.pbkdf2_hmac('sha256', provided_password.encode(), salt, 100000)
+    return new_hash.hex() == password_hash_hex
 
 def setup_admin_account():
     """Setup admin account interactively"""
@@ -86,7 +103,7 @@ def setup_admin_account():
     while True:
         print("\nChoose an option:")
         print("1. Enter admin credentials manually")
-        print("2. Generate credentials automatically")
+        print("2. Generate credentials automatically") 
         print("3. Skip admin setup (configure later)")
         
         choice = input("\nEnter your choice (1-3): ").strip()
@@ -115,13 +132,21 @@ def setup_manual_admin(db):
             print("❌ Telegram ID must be a number. Please try again.")
     
     # Username
-    username = input("Enter admin username: ").strip()
-    if not username:
-        username = f"admin_{telegram_id}"
+    while True:
+        username = input("Enter admin username: ").strip()
+        if username:
+            # Check if username already exists
+            existing_admin = db.get_admin_by_username(username)
+            if existing_admin:
+                print("❌ Username already exists. Please choose another one.")
+            else:
+                break
+        else:
+            print("❌ Username cannot be empty.")
     
     # Password
     while True:
-        password = getpass("Enter admin password: ").strip()
+        password = getpass("Enter admin password (min 8 characters): ").strip()
         if len(password) >= 8:
             confirm = getpass("Confirm password: ").strip()
             if password == confirm:
@@ -151,10 +176,15 @@ def setup_auto_admin(db):
         else:
             print("❌ Telegram ID must be a number. Please try again.")
     
-    # Generate credentials
+    # Generate unique username
     username = f"admin_{telegram_id}"
+    counter = 1
+    while db.get_admin_by_username(username):
+        username = f"admin_{telegram_id}_{counter}"
+        counter += 1
+    
     password = generate_password()
-    full_name = "Administrator"
+    full_name = "System Administrator"
     
     print(f"\n✅ Auto-generated credentials:")
     print(f"   Username: {username}")
@@ -189,9 +219,9 @@ def save_admin_to_db(db, telegram_id, username, password, full_name):
             else:
                 # Insert new admin
                 cursor.execute('''
-                    INSERT INTO admins (telegram_id, username, password_hash, full_name, is_active)
-                    VALUES (?, ?, ?, ?, ?)
-                ''', (telegram_id, username, password_hash, full_name, True))
+                    INSERT INTO admins (telegram_id, username, password_hash, full_name, is_active, role)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (telegram_id, username, password_hash, full_name, True, 'superadmin'))
                 action = "created"
             
             conn.commit()
@@ -224,10 +254,14 @@ def setup_bot_config():
     choice = input("Enter your choice (1-2): ").strip()
     
     if choice == '1':
-        token = input("Enter your bot token: ").strip()
-        if token:
-            config.config['BOT']['token'] = token
-            print("✅ Bot token saved")
+        while True:
+            token = input("Enter your bot token: ").strip()
+            if token and token.startswith('') and len(token) > 20:
+                config.config['BOT']['token'] = token
+                print("✅ Bot token saved")
+                break
+            else:
+                print("❌ Invalid bot token format. Should start with and be longer than 20 characters.")
     
     # Admin ID for bot notifications
     print("\nAdmin Telegram ID for bot notifications:")
@@ -247,19 +281,24 @@ def setup_bot_config():
         with open(config.config_file, 'w', encoding='utf-8') as configfile:
             config.config.write(configfile)
         print("✅ Configuration saved to config.ini")
+        
+        # Set secure permissions for config file
+        os.chmod(config.config_file, 0o600)
+        print("✅ Secure permissions set for config.ini")
+        
     except Exception as e:
         print(f"❌ Failed to save configuration: {e}")
 
 def display_final_instructions():
     """Display final instructions after installation"""
-    print("\n" + "="*50)
+    print("\n" + "="*60)
     print("🎉 INSTALLATION COMPLETED SUCCESSFULLY!")
-    print("="*50)
+    print("="*60)
     
     print("\n📝 NEXT STEPS:")
     print("1. Edit config.ini to complete your configuration:")
-    print("   - Set your bot token in the [BOT] section")
-    print("   - Configure payment methods in [PAYMENTS] section")
+    print("   - Verify bot token in [BOT] section")
+    print("   - Configure payment methods in [PAYMENTS] section") 
     print("   - Adjust VPN settings in [VPN] section")
     
     print("\n2. Start the bot:")
@@ -268,6 +307,12 @@ def display_final_instructions():
     print("\n3. Access the admin panel:")
     print("   - Use the credentials you created during installation")
     print("   - Or run this installer again to create new admin accounts")
+    
+    print("\n🔐 SECURITY RECOMMENDATIONS:")
+    print("   - Change default passwords regularly")
+    print("   - Keep your server and dependencies updated")
+    print("   - Regularly backup your database")
+    print("   - Monitor logs for suspicious activity")
     
     print("\n🔧 For support and updates, visit:")
     print("   https://github.com/Chistovik92/vpn-bot-panel")

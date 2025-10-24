@@ -154,13 +154,17 @@ activate_venv() {
 install_dependencies() {
     log_info "Installing dependencies..."
     
-    # Upgrade pip first
-    $PYTHON_CMD -m pip install --upgrade pip
+    # Upgrade pip first (but don't fail if it doesn't work)
+    $PYTHON_CMD -m pip install --upgrade pip || log_warning "pip upgrade failed, continuing..."
     
     # Install requirements
     if [ -f "requirements.txt" ]; then
         $PYTHON_CMD -m pip install -r requirements.txt
-        log_success "Dependencies installed"
+        if [ $? -eq 0 ]; then
+            log_success "Dependencies installed"
+        else
+            log_warning "Some dependencies failed to install, but continuing with installation..."
+        fi
     else
         log_error "requirements.txt not found"
         exit 1
@@ -174,6 +178,7 @@ run_installation() {
     # Set PYTHONPATH to current directory
     export PYTHONPATH=$(pwd):$PYTHONPATH
     
+    # Run interactive installation
     if $PYTHON_CMD install.py; then
         log_success "Installation completed successfully"
     else
@@ -202,13 +207,13 @@ show_next_steps() {
     log_success "🎉 Installation completed successfully!"
     echo ""
     echo "📝 Next steps:"
-    echo "   1. Configure your settings in config.ini"
-    echo "   2. Set your bot token in config.ini"
-    echo "   3. Run the bot with: $PYTHON_CMD bot.py"
+    echo "   1. Review and edit config.ini file with your settings"
+    echo "   2. Start the bot with: $PYTHON_CMD bot.py"
+    echo "   3. Access admin panel with the credentials you created"
     echo ""
     echo "💡 Tips:"
     echo "   - To activate the virtual environment: source venv/bin/activate (Linux/Mac) or venv\\Scripts\\activate (Windows)"
-    echo "   - Check config.ini for additional configuration options"
+    echo "   - Check the README.md for detailed usage instructions"
     echo ""
 }
 

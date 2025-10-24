@@ -41,7 +41,21 @@ class Database:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
-            # Users table
+            # Admins table (for admin panel access)
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS admins (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    telegram_id INTEGER UNIQUE,
+                    username TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    full_name TEXT,
+                    is_active BOOLEAN DEFAULT TRUE,
+                    created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_login TIMESTAMP
+                )
+            ''')
+            
+            # Users table (for bot users)
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS users (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -154,6 +168,29 @@ class Database:
                 INSERT INTO vpn_configs (user_id, config_name, config_data)
                 VALUES (?, ?, ?)
             ''', (user_id, config_name, config_data))
+
+    # Admin methods
+    def get_admin_by_username(self, username):
+        """Get admin by username"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT * FROM admins WHERE username = ? AND is_active = TRUE', (username,))
+            return cursor.fetchone()
+    
+    def get_admin_by_telegram_id(self, telegram_id):
+        """Get admin by telegram_id"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT * FROM admins WHERE telegram_id = ? AND is_active = TRUE', (telegram_id,))
+            return cursor.fetchone()
+    
+    def update_admin_last_login(self, admin_id):
+        """Update admin last login timestamp"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE admins SET last_login = CURRENT_TIMESTAMP WHERE id = ?
+            ''', (admin_id,))
 
 # Test function for debugging
 def test_database():

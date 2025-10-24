@@ -29,6 +29,41 @@ log_error() {
     echo -e "${RED}❌ $1${NC}"
 }
 
+# Check if Git is installed
+check_git() {
+    if ! command -v git &>/dev/null; then
+        log_error "Git is not installed. Please install git first:"
+        log_info "Ubuntu/Debian: sudo apt-get install git"
+        log_info "CentOS/RHEL: sudo yum install git"
+        log_info "macOS: brew install git"
+        exit 1
+    fi
+    log_success "Git found: $(git --version)"
+}
+
+# Clone or update repository
+setup_repository() {
+    local repo_url="https://github.com/Chistovik92/vpn-bot-panel.git"
+    local project_dir="vpn-bot-panel"
+    
+    if [ -d "$project_dir" ]; then
+        log_info "Project directory already exists, updating..."
+        cd "$project_dir"
+        git pull origin main
+        log_success "Repository updated"
+    else
+        log_info "Cloning repository from $repo_url..."
+        git clone "$repo_url" "$project_dir"
+        cd "$project_dir"
+        log_success "Repository cloned successfully"
+    fi
+    
+    # Show current directory and files
+    log_info "Current directory: $(pwd)"
+    log_info "Files in directory:"
+    ls -la
+}
+
 # Check if Python is installed
 check_python() {
     log_info "Checking Python installation..."
@@ -81,14 +116,11 @@ check_required_files() {
     
     if [ ${#missing_files[@]} -ne 0 ]; then
         log_error "Missing required files: ${missing_files[*]}"
-        log_info "Please make sure you're running the script from the project root directory"
-        log_info "Current directory: $(pwd)"
-        log_info "Files in current directory:"
-        ls -la
-        exit 1
+        return 1
     fi
     
     log_success "All required files found"
+    return 0
 }
 
 # Create virtual environment
@@ -184,8 +216,16 @@ show_next_steps() {
 main() {
     log_info "Starting VPN Bot Panel installation..."
     
-    # Check if we're in the right directory
-    check_required_files
+    # Check and setup repository first
+    check_git
+    setup_repository
+    
+    # Check required files
+    if ! check_required_files; then
+        log_error "Required files are missing even after cloning repository."
+        log_info "Please check the repository structure and try again."
+        exit 1
+    fi
     
     # Check Python
     check_python

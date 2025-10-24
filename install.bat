@@ -3,6 +3,28 @@ setlocal enabledelayedexpansion
 
 echo 🚀 Starting VPN Bot Panel installation...
 
+:: Check Git
+git --version >nul 2>&1
+if %errorlevel% neq 0 (
+    echo ❌ Git is not installed. Please install Git first.
+    echo 📥 Download from: https://git-scm.com/download/win
+    pause
+    exit /b 1
+)
+
+:: Setup repository
+if exist "vpn-bot-panel" (
+    echo ℹ️ Project directory already exists, updating...
+    cd vpn-bot-panel
+    git pull origin main
+) else (
+    echo ℹ️ Cloning repository...
+    git clone https://github.com/Chistovik92/vpn-bot-panel.git
+    cd vpn-bot-panel
+)
+
+echo ✅ Repository setup completed
+
 :: Check Python
 python --version >nul 2>&1
 if %errorlevel% neq 0 (

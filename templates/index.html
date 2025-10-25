@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+
+{% block title %}Главная - VPN Bot Panel{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1><i class="fas fa-tachometer-alt"></i> Панель управления</h1>
+        <p class="lead">Добро пожаловать в систему управления VPN сервисом</p>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <!-- Статистика -->
+    <div class="col-md-3 mb-4">
+        <div class="card text-white bg-primary">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 class="card-title">{{ stats.total_users }}</h4>
+                        <p class="card-text">Пользователей</p>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-users fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3 mb-4">
+        <div class="card text-white bg-success">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 class="card-title">{{ stats.active_servers }}</h4>
+                        <p class="card-text">Серверов</p>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-server fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3 mb-4">
+        <div class="card text-white bg-warning">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 class="card-title">{{ stats.active_subscriptions }}</h4>
+                        <p class="card-text">Подписок</p>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-plug fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3 mb-4">
+        <div class="card text-white bg-info">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h4 class="card-title">{{ "%.2f"|format(stats.total_revenue) }} ₽</h4>
+                        <p class="card-text">Доход</p>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-chart-line fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Быстрые действия -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-rocket"></i> Быстрые действия
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    {% if session.user_role in ['admin', 'super_admin'] %}
+                    <div class="col-md-3 mb-2">
+                        <a href="{{ url_for('admin_panel') }}" class="btn btn-outline-primary w-100">
+                            <i class="fas fa-cog"></i> Админ панель
+                        </a>
+                    </div>
+                    {% endif %}
+                    
+                    <div class="col-md-3 mb-2">
+                        <a href="/api/tariffs" class="btn btn-outline-success w-100">
+                            <i class="fas fa-list"></i> Смотреть тарифы
+                        </a>
+                    </div>
+                    
+                    {% if session.user_role in ['moderator', 'admin', 'super_admin'] %}
+                    <div class="col-md-3 mb-2">
+                        <a href="/api/stats" class="btn btn-outline-info w-100">
+                            <i class="fas fa-chart-bar"></i> Статистика API
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Информация о системе -->
+<div class="row mt-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-info-circle"></i> Информация о системе
+                </h5>
+            </div>
+            <div class="card-body">
+                <ul class="list-group list-group-flush">
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        Роль пользователя
+                        <span class="badge bg-primary rounded-pill">{{ session.user_role }}</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        Обычные пользователи
+                        <span class="badge bg-secondary rounded-pill">{{ stats.regular_users }}</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        Модераторы
+                        <span class="badge bg-warning rounded-pill">{{ stats.moderators }}</span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        Администраторы
+                        <span class="badge bg-danger rounded-pill">{{ stats.admins }}</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-mobile-alt"></i> Доступ через Telegram
+                </h5>
+            </div>
+            <div class="card-body">
+                <p>Основное управление системой осуществляется через Telegram бота:</p>
+                <ul>
+                    <li><strong>/start</strong> - начать работу</li>
+                    <li><strong>/tariffs</strong> - просмотр тарифов</li>
+                    <li><strong>/admin</strong> - панель администратора</li>
+                    <li><strong>/help</strong> - справка по командам</li>
+                </ul>
+                <div class="alert alert-info">
+                    <small>
+                        <i class="fas fa-exclamation-circle"></i>
+                        Веб-панель предназначена для мониторинга и базового управления.
+                        Для полного функционала используйте Telegram бота.
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

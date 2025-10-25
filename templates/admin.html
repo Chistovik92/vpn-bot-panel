@@ -1,0 +1,247 @@
+{% extends "base.html" %}
+
+{% block title %}Админ панель - VPN Bot Panel{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1><i class="fas fa-cog"></i> Админ панель</h1>
+        <p class="lead">Управление системой VPN Bot Panel</p>
+    </div>
+</div>
+
+<!-- Табы -->
+<ul class="nav nav-tabs mt-4" id="adminTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="servers-tab" data-bs-toggle="tab" 
+                data-bs-target="#servers" type="button" role="tab">
+            <i class="fas fa-server"></i> Серверы
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="tariffs-tab" data-bs-toggle="tab" 
+                data-bs-target="#tariffs" type="button" role="tab">
+            <i class="fas fa-list"></i> Тарифы
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="stats-tab" data-bs-toggle="tab" 
+                data-bs-target="#stats" type="button" role="tab">
+            <i class="fas fa-chart-bar"></i> Статистика
+        </button>
+    </li>
+</ul>
+
+<!-- Содержимое табов -->
+<div class="tab-content mt-3" id="adminTabsContent">
+    <!-- Серверы -->
+    <div class="tab-pane fade show active" id="servers" role="tabpanel">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Управление серверами 3x-ui</h5>
+                <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addServerModal">
+                    <i class="fas fa-plus"></i> Добавить сервер
+                </button>
+            </div>
+            <div class="card-body">
+                {% if servers %}
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Название</th>
+                                <th>URL</th>
+                                <th>Локация</th>
+                                <th>Пользователи</th>
+                                <th>Статус</th>
+                                <th>Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for server in servers %}
+                            <tr>
+                                <td>{{ server.id }}</td>
+                                <td>{{ server.name }}</td>
+                                <td><code>{{ server.url }}</code></td>
+                                <td>{{ server.location }}</td>
+                                <td>
+                                    <span class="badge bg-{% if server.current_users < server.max_users * 0.8 %}success{% else %}warning{% endif %}">
+                                        {{ server.current_users }}/{{ server.max_users }}
+                                    </span>
+                                </td>
+                                <td>
+                                    {% if server.is_active %}
+                                    <span class="badge bg-success">Активен</span>
+                                    {% else %}
+                                    <span class="badge bg-danger">Неактивен</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-primary">
+                                        <i class="fas fa-sync"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-4">
+                    <i class="fas fa-server fa-3x text-muted mb-3"></i>
+                    <p class="text-muted">Серверы не добавлены</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Тарифы -->
+    <div class="tab-pane fade" id="tariffs" role="tabpanel">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Управление тарифами</h5>
+                <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#addTariffModal">
+                    <i class="fas fa-plus"></i> Добавить тариф
+                </button>
+            </div>
+            <div class="card-body">
+                {% if tariffs %}
+                <div class="row">
+                    {% for tariff in tariffs %}
+                    <div class="col-md-4 mb-3">
+                        <div class="card h-100">
+                            <div class="card-header">
+                                <h6 class="mb-0">{{ tariff.name }}</h6>
+                            </div>
+                            <div class="card-body">
+                                <p class="card-text">{{ tariff.description }}</p>
+                                <ul class="list-unstyled">
+                                    <li><strong>Цена:</strong> {{ tariff.price }} ₽</li>
+                                    <li><strong>Дней:</strong> {{ tariff.duration_days }}</li>
+                                    <li><strong>Трафик:</strong> {{ tariff.traffic_gb }} GB</li>
+                                </ul>
+                            </div>
+                            <div class="card-footer">
+                                {% if tariff.is_active %}
+                                <span class="badge bg-success">Активен</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Неактивен</span>
+                                {% endif %}
+                                <div class="btn-group btn-group-sm float-end">
+                                    <button class="btn btn-outline-primary">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                    <button class="btn btn-outline-danger">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="text-center py-4">
+                    <i class="fas fa-list fa-3x text-muted mb-3"></i>
+                    <p class="text-muted">Тарифы не настроены</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Статистика -->
+    <div class="tab-pane fade" id="stats" role="tabpanel">
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Детальная статистика</h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="statsChart" width="400" height="200"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Системная информация</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="list-group">
+                            <div class="list-group-item d-flex justify-content-between">
+                                <span>Всего пользователей:</span>
+                                <strong>{{ stats.total_users }}</strong>
+                            </div>
+                            <div class="list-group-item d-flex justify-content-between">
+                                <span>Активных подписок:</span>
+                                <strong>{{ stats.active_subscriptions }}</strong>
+                            </div>
+                            <div class="list-group-item d-flex justify-content-between">
+                                <span>Доход:</span>
+                                <strong>{{ "%.2f"|format(stats.total_revenue) }} ₽</strong>
+                            </div>
+                            <div class="list-group-item d-flex justify-content-between">
+                                <span>Модераторов:</span>
+                                <strong>{{ stats.moderators }}</strong>
+                            </div>
+                            <div class="list-group-item d-flex justify-content-between">
+                                <span>Администраторов:</span>
+                                <strong>{{ stats.admins }}</strong>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальные окна будут здесь -->
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// График статистики
+const ctx = document.getElementById('statsChart').getContext('2d');
+const statsChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+        labels: ['Пользователи', 'Подписки', 'Серверы'],
+        datasets: [{
+            label: 'Статистика системы',
+            data: [
+                {{ stats.total_users }},
+                {{ stats.active_subscriptions }},
+                {{ stats.active_servers }}
+            ],
+            backgroundColor: [
+                'rgba(54, 162, 235, 0.5)',
+                'rgba(75, 192, 192, 0.5)',
+                'rgba(153, 102, 255, 0.5)'
+            ],
+            borderColor: [
+                'rgba(54, 162, 235, 1)',
+                'rgba(75, 192, 192, 1)',
+                'rgba(153, 102, 255, 1)'
+            ],
+            borderWidth: 1
+        }]
+    },
+    options: {
+        scales: {
+            y: {
+                beginAtZero: true
+            }
+        }
+    }
+});
+</script>
+{% endblock %}

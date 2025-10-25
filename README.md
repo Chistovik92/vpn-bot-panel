@@ -33,7 +33,7 @@
 
 ```bash
 # Клонируйте репозиторий
-git clone https://github.com/yourusername/vpn-bot-panel.git
+git clone https://github.com/Chistovik92/vpn-bot-panel.git
 cd vpn-bot-panel
 
 # Запустите установку

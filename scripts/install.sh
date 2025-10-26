@@ -63,19 +63,49 @@ create_install_directory() {
     
     if [ ! -d "$INSTALL_DIR" ]; then
         mkdir -p "$INSTALL_DIR"
+        log_success "Директория создана: $INSTALL_DIR"
+    else
+        log_warning "Директория уже существует: $INSTALL_DIR"
     fi
     
-    # Копируем файлы проекта в директорию установки
-    log_info "Копирование файлов в $INSTALL_DIR..."
-    cp -r "$PROJECT_ROOT"/* "$INSTALL_DIR"/
+    # Очистка директории установки (если нужно)
+    if [ "$(ls -A $INSTALL_DIR 2>/dev/null)" ]; then
+        log_warning "Директория установки не пуста"
+        read -p "Очистить директорию? (y/N): " clean_dir
+        if [ "$clean_dir" = "y" ] || [ "$clean_dir" = "Y" ]; then
+            rm -rf "$INSTALL_DIR"/*
+            log_success "Директория очищена"
+        fi
+    fi
+}
+
+copy_project_files() {
+    log_info "Копирование файлов проекта..."
     
-    # Удаляем скрипты из установочной директории чтобы избежать рекурсии
-    rm -rf "$INSTALL_DIR/scripts"
-    mkdir -p "$INSTALL_DIR/scripts"
-    cp "$PROJECT_ROOT/scripts/"*.sh "$INSTALL_DIR/scripts/"
+    cd "$PROJECT_ROOT"
+    
+    # Создаем список файлов для копирования (исключая системные директории)
+    local files_to_copy=(
+        "app" "scripts" "templates" "static" "docs"
+        "requirements.txt" "config.ini.example" "run.py" "LICENSE" "README.md"
+        ".gitignore"
+    )
+    
+    # Копируем только нужные файлы и директории
+    for item in "${files_to_copy[@]}"; do
+        if [ -e "$item" ]; then
+            log_info "Копирование: $item"
+            cp -r "$item" "$INSTALL_DIR"/
+        else
+            log_warning "Файл/директория не найдена: $item"
+        fi
+    done
+    
+    # Создаем необходимые директории если их нет
+    mkdir -p "$INSTALL_DIR/data" "$INSTALL_DIR/logs" "$INSTALL_DIR/backups"
     
     cd "$INSTALL_DIR"
-    log_success "Проект скопирован в $INSTALL_DIR"
+    log_success "Файлы проекта скопированы в $INSTALL_DIR"
 }
 
 setup_venv() {
@@ -109,7 +139,7 @@ setup_directories() {
     log_info "Создание структуры директорий..."
     
     cd "$INSTALL_DIR"
-    mkdir -p app scripts templates static/css static/js data logs backups
+    mkdir -p data logs backups
     
     log_success "Директории созданы"
 }
@@ -121,8 +151,10 @@ setup_database() {
     source venv/bin/activate
     
     # Проверяем наличие необходимых модулей
-    if python3 -c "from app.database import Database" &>/dev/null; then
+    if python3 -c "import sys; sys.path.append('.'); from app.database import Database" &>/dev/null; then
         python3 -c "
+import sys
+sys.path.append('.')
 from app.database import Database
 db = Database()
 db.init_db()
@@ -152,6 +184,8 @@ setup_super_admin() {
     source venv/bin/activate
     
     python3 -c "
+import sys
+sys.path.append('.')
 from app.database import Database, UserRole
 db = Database()
 
@@ -228,27 +262,59 @@ setup_bot_config() {
     python3 -c "
 import os
 import configparser
-from app.config import Config
 
-config = Config()
-config.create_default_config()
-
-# Обновляем конфиг с введенными данными
+config_file = 'config.ini'
 config_parser = configparser.ConfigParser()
-config_parser.read('config.ini')
 
-if '$bot_token'.strip():
-    config_parser['BOT']['token'] = '$bot_token'
-
-config_parser['WEB']['port'] = '$web_port'
-config_parser['WEB']['debug'] = '$( [ \"$debug_mode\" = \"y\" ] && echo \"True\" || echo \"False\" )'
+# Создаем конфиг если не существует
+if not os.path.exists(config_file):
+    config_parser['DATABASE'] = {
+        'path': 'data/vpn_bot.db',
+        'backup_path': 'backups/'
+    }
+    config_parser['BOT'] = {
+        'token': '$bot_token',
+        'admin_telegram_id': '$telegram_id'
+    }
+    config_parser['WEB'] = {
+        'secret_key': os.urandom(24).hex(),
+        'host': '127.0.0.1',
+        'port': '$web_port',
+        'debug': '$( [ \"$debug_mode\" = \"y\" ] && echo \"True\" || echo \"False\" )'
+    }
+    config_parser['PAYMENTS'] = {}
+    config_parser['SECURITY'] = {
+        'auto_unban_interval_hours': '6',
+        'max_login_attempts': '5',
+        'session_timeout_minutes': '60',
+        'backup_retention_days': '7'
+    }
+    config_parser['LOGGING'] = {
+        'level': 'INFO',
+        'file': 'logs/vpn_bot.log',
+        'max_size_mb': '10',
+        'backup_count': '5'
+    }
+else:
+    config_parser.read(config_file)
+    if '$bot_token'.strip():
+        if 'BOT' not in config_parser:
+            config_parser['BOT'] = {}
+        config_parser['BOT']['token'] = '$bot_token'
+    
+    if 'WEB' not in config_parser:
+        config_parser['WEB'] = {}
+    config_parser['WEB']['port'] = '$web_port'
+    config_parser['WEB']['debug'] = '$( [ \"$debug_mode\" = \"y\" ] && echo \"True\" || echo \"False\" )'
 
 # Устанавливаем admin_telegram_id если он был введен ранее
 if [ -n \"$telegram_id\" ] && [[ \"$telegram_id\" =~ ^[0-9]+$ ]]; then
+    if 'BOT' not in config_parser:
+        config_parser['BOT'] = {}
     config_parser['BOT']['admin_telegram_id'] = '$telegram_id'
 fi
 
-with open('config.ini', 'w') as f:
+with open(config_file, 'w') as f:
     config_parser.write(f)
 
 print('✅ Конфигурация бота сохранена')
@@ -267,8 +333,13 @@ set_secure_permissions() {
     chmod +x run.py scripts/*.sh
     
     # Устанавливаем безопасные права для конфиденциальных файлов
-    chmod 600 config.ini 2>/dev/null || true
-    chmod 600 data/vpn_bot.db 2>/dev/null || true
+    if [ -f "config.ini" ]; then
+        chmod 600 config.ini
+    fi
+    
+    if [ -f "data/vpn_bot.db" ]; then
+        chmod 600 data/vpn_bot.db
+    fi
     
     # Создаем необходимые директории с правильными правами
     mkdir -p data logs backups
@@ -326,14 +397,18 @@ setup_backup_cron() {
     
     local backup_script="/usr/local/bin/vpn-panel-backup.sh"
     
-    # Копируем скрипт бэкапа
-    cp "$INSTALL_DIR/scripts/backup.sh" "$backup_script"
-    chmod +x "$backup_script"
-    
-    # Добавляем в cron (ежедневно в 3:00)
-    (crontab -l 2>/dev/null | grep -v "$backup_script"; echo "0 3 * * * $backup_script") | crontab -
-    
-    log_success "Автоматический бэкап настроен"
+    # Копируем скрипт бэкапа если он существует
+    if [ -f "$INSTALL_DIR/scripts/backup.sh" ]; then
+        cp "$INSTALL_DIR/scripts/backup.sh" "$backup_script"
+        chmod +x "$backup_script"
+        
+        # Добавляем в cron (ежедневно в 3:00)
+        (crontab -l 2>/dev/null | grep -v "$backup_script"; echo "0 3 * * $backup_script") | crontab -
+        
+        log_success "Автоматический бэкап настроен"
+    else
+        log_warning "Скрипт бэкапа не найден, пропускаем настройку cron"
+    fi
 }
 
 setup_nginx_proxy() {
@@ -369,11 +444,14 @@ server {
 EOF
 
             # Активируем конфиг
-            ln -sf "$nginx_config" "/etc/nginx/sites-enabled/"
-            nginx -t && systemctl reload nginx
-            
-            log_success "Nginx прокси настроен для $domain_name"
-            log_info "Не забудьте настроить SSL сертификаты (certbot) для домена"
+            ln -sf "$nginx_config" "/etc/nginx/sites-enabled/" 2>/dev/null || true
+            if nginx -t; then
+                systemctl reload nginx
+                log_success "Nginx прокси настроен для $domain_name"
+                log_info "Не забудьте настроить SSL сертификаты (certbot) для домена"
+            else
+                log_error "Ошибка конфигурации Nginx"
+            fi
         else
             log_warning "Доменное имя не указано, Nginx прокси не настроен"
         fi
@@ -397,9 +475,17 @@ start_services() {
 }
 
 show_final_instructions() {
-    local web_port=$(grep -oP 'port\s*=\s*\K\d+' "$INSTALL_DIR/config.ini" 2>/dev/null || echo "5000")
-    local bot_token=$(grep -oP 'token\s*=\s*\K[^ ]+' "$INSTALL_DIR/config.ini" 2>/dev/null || echo "не настроен")
-    local admin_id=$(grep -oP 'admin_telegram_id\s*=\s*\K[^ ]+' "$INSTALL_DIR/config.ini" 2>/dev/null || echo "не настроен")
+    local web_port="5000"
+    local bot_token="не настроен"
+    local admin_id="не настроен"
+    
+    if [ -f "$INSTALL_DIR/config.ini" ]; then
+        web_port=$(grep -oP 'port\s*=\s*\K\d+' "$INSTALL_DIR/config.ini" 2>/dev/null || echo "5000")
+        bot_token=$(grep -oP 'token\s*=\s*\K[^ ]+' "$INSTALL_DIR/config.ini" 2>/dev/null || echo "не настроен")
+        admin_id=$(grep -oP 'admin_telegram_id\s*=\s*\K[^ ]+' "$INSTALL_DIR/config.ini" 2>/dev/null || echo "не настроен")
+    fi
+    
+    local server_ip=$(hostname -I | awk '{print $1}' 2>/dev/null || echo "localhost")
     
     echo ""
     log_success "🎉 Установка завершена!"
@@ -408,10 +494,10 @@ show_final_instructions() {
     echo "  📁 Директория: $INSTALL_DIR"
     echo "  🤖 Токен бота: ********${bot_token: -4}"
     echo "  👑 Admin Telegram ID: $admin_id"
-    echo "  🌐 Веб-панель: http://$(hostname -I | awk '{print $1}'):$web_port"
+    echo "  🌐 Веб-панель: http://$server_ip:$web_port"
     echo ""
     log_info "🛡️  Система безопасности:"
-    echo "  • Конфигурационные файлы защищены (только root)"
+    echo "  • Конфигурационные файлы защищены"
     echo "  • База данных зашифрована"
     echo "  • Автоматические бэкапы настроены"
     echo "  • Systemd сервис с ограниченными правами"
@@ -439,7 +525,7 @@ show_final_instructions() {
     log_info "🔧 Устранение неполадок:"
     echo "  • Логи бота: sudo journalctl -u vpn-bot-panel -f"
     echo "  • Логи приложения: tail -f $INSTALL_DIR/logs/vpn_bot.log"
-    echo "  • Проверка конфигурации: sudo $INSTALL_DIR/venv/bin/python3 -c \"from app.config import Config; print('OK')\""
+    echo "  • Проверка конфигурации: sudo $INSTALL_DIR/venv/bin/python3 -c \"import sys; sys.path.append('$INSTALL_DIR'); from app.config import Config; print('OK')\""
     echo ""
 }
 
@@ -452,6 +538,7 @@ main() {
     check_python
     install_system_packages
     create_install_directory
+    copy_project_files
     setup_venv
     install_dependencies
     setup_directories

@@ -2,7 +2,7 @@
 
 set -e
 
-echo "🚀 Запуск установки VPN Bot Panel..."
+echo "🚀 Универсальный установщик VPN Bot Panel"
 
 # Цвета
 RED='\033[0;31m'
@@ -16,139 +16,141 @@ log_success() { echo -e "${GREEN}✅ $1${NC}"; }
 log_warning() { echo -e "${YELLOW}⚠️ $1${NC}"; }
 log_error() { echo -e "${RED}❌ $1${NC}"; }
 
-# Определяем корневую директорию проекта
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-INSTALL_DIR="/opt/vpn-bot-panel"
-
-cd "$PROJECT_ROOT"
-
-check_disk_space() {
-    log_info "Проверка свободного места на диске..."
-    
-    local available_kb=$(df / | awk 'NR==2 {print $4}')
-    local available_mb=$((available_kb / 1024))
-    local min_space_mb=500  # Минимум 500MB
-    
-    if [ "$available_mb" -lt "$min_space_mb" ]; then
-        log_error "Недостаточно свободного места на диске!"
-        log_info "Доступно: ${available_mb} MB"
-        log_info "Требуется: ${min_space_mb} MB"
-        log_info ""
-        log_info "Запустите очистку диска:"
-        log_info "sudo ./scripts/cleanup.sh"
-        log_info ""
-        log_info "Или освободите место вручную:"
-        log_info "sudo apt clean && sudo apt autoremove --purge"
-        exit 1
-    else
-        log_success "Свободного места достаточно: ${available_mb} MB"
-    fi
+show_usage() {
+    echo "Использование: $0 [OPTIONS]"
+    echo ""
+    echo "OPTIONS:"
+    echo "  --minimal              Минимальная установка (меньше места)"
+    echo "  --install-dir DIR      Директория установки (по умолчанию: /opt/vpn-bot-panel)"
+    echo "  --branch BRANCH        Ветка GitHub (по умолчанию: Dev_Bot-plan)"
+    echo "  --cleanup              Очистка диска перед установкой"
+    echo "  --help, -h             Показать эту справку"
+    echo ""
+    echo "Примеры:"
+    echo "  $0                              # Стандартная установка"
+    echo "  $0 --minimal                    # Минимальная установка"
+    echo "  $0 --install-dir /opt/my-vpn    # Установка в другую директорию"
+    echo "  $0 --cleanup --minimal          # Очистка + минимальная установка"
+    echo ""
+    echo "Быстрая установка одной командой:"
+    echo "  curl -sSL https://raw.githubusercontent.com/Chistovik92/vpn-bot-panel/Dev_Bot-plan/install.sh | sudo bash -s -- --minimal"
 }
 
-check_root() {
-    if [[ $EUID -eq 0 ]]; then
-        log_success "Проверка прав: root"
-    else
-        log_error "Требуются права root"
-        log_info "Запустите: sudo $0"
-        exit 1
-    fi
-}
-
-check_python() {
-    if command -v python3 &>/dev/null; then
-        PYTHON_VERSION=$(python3 -c "import sys; print('.'.join(map(str, sys.version_info[:2])))")
-        log_success "Python $PYTHON_VERSION найден"
-    else
-        log_error "Python 3 не установлен"
-        exit 1
-    fi
-}
-
-install_minimal_packages() {
-    log_info "Установка минимального набора пакетов..."
+download_and_run() {
+    local script_url="$1"
+    local script_name="$2"
     
-    # Очищаем кэш перед установкой
-    apt clean 2>/dev/null || true
+    log_info "Загрузка $script_name..."
     
-    if command -v apt &>/dev/null; then
-        apt update
+    # Скачиваем скрипт
+    if curl -sSL "$script_url" -o "/tmp/$script_name"; then
+        chmod +x "/tmp/$script_name"
+        log_success "Скрипт загружен: $script_name"
         
-        # Устанавливаем только самые необходимые пакеты
-        apt install -y --no-install-recommends \
-            python3 \
-            python3-venv \
-            python3-pip \
-            sqlite3 \
-            curl
+        # Запускаем скрипт с оставшимися аргументами
+        "/tmp/$script_name" "${@:3}"
         
-        log_success "Минимальные пакеты установлены"
+        # Очищаем
+        rm -f "/tmp/$script_name"
     else
-        log_error "Не удалось установить пакеты (apt не найден)"
-        exit 1
+        log_error "Ошибка загрузки $script_name"
+        return 1
     fi
 }
 
-install_full_packages() {
-    log_info "Установка дополнительных пакетов..."
+run_cleanup() {
+    log_info "Запуск очистки диска..."
+    download_and_run \
+        "https://raw.githubusercontent.com/Chistovik92/vpn-bot-panel/Dev_Bot-plan/scripts/cleanup.sh" \
+        "cleanup.sh"
+}
+
+run_full_install() {
+    local install_dir="$1"
+    local branch="$2"
     
-    if command -v apt &>/dev/null; then
-        apt install -y \
-            git \
-            nginx \
-            systemd
-        
-        log_success "Дополнительные пакеты установлены"
-    else
-        log_warning "Не удалось установить дополнительные пакеты"
-    fi
+    log_info "Запуск полной установки..."
+    download_and_run \
+        "https://raw.githubusercontent.com/Chistovik92/vpn-bot-panel/$branch/install-from-github.sh" \
+        "install-from-github.sh" \
+        --install-dir "$install_dir" \
+        --branch "$branch"
 }
 
-create_install_directory() {
-    log_info "Создание директории установки..."
+run_minimal_install() {
+    local install_dir="$1"
+    local branch="$2"
     
-    if [ ! -d "$INSTALL_DIR" ]; then
-        mkdir -p "$INSTALL_DIR"
-        log_success "Директория создана: $INSTALL_DIR"
-    else
-        log_warning "Директория уже существует: $INSTALL_DIR"
-        
-        read -p "Очистить директорию перед установкой? (y/N): " clean_dir
-        if [ "$clean_dir" = "y" ] || [ "$clean_dir" = "Y" ]; then
-            rm -rf "$INSTALL_DIR"/*
-            log_success "Директория очищена"
-        fi
-    fi
+    log_info "Запуск минимальной установки..."
+    download_and_run \
+        "https://raw.githubusercontent.com/Chistovik92/vpn-bot-panel/$branch/install-minimal-from-github.sh" \
+        "install-minimal-from-github.sh" \
+        --install-dir "$install_dir" \
+        --branch "$branch"
 }
-
-# ... остальные функции остаются такими же как в предыдущей версии ...
 
 main() {
-    log_info "Начало установки VPN Bot Panel..."
-    log_info "Корневая директория проекта: $PROJECT_ROOT"
-    log_info "Директория установки: $INSTALL_DIR"
+    local MODE="full"
+    local INSTALL_DIR="/opt/vpn-bot-panel"
+    local BRANCH="Dev_Bot-plan"
+    local RUN_CLEANUP=false
     
-    check_root
-    check_disk_space
-    check_python
-    install_minimal_packages
-    create_install_directory
-    copy_project_files
-    setup_venv
-    install_dependencies
-    setup_directories
-    setup_database
-    setup_super_admin
-    setup_payment_config
-    setup_bot_config
-    install_full_packages
-    set_secure_permissions
-    create_systemd_service
-    setup_backup_cron
-    setup_nginx_proxy
-    start_services
-    show_final_instructions
+    # Разбор аргументов
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --minimal)
+                MODE="minimal"
+                shift
+                ;;
+            --install-dir)
+                INSTALL_DIR="$2"
+                shift 2
+                ;;
+            --branch)
+                BRANCH="$2"
+                shift 2
+                ;;
+            --cleanup)
+                RUN_CLEANUP=true
+                shift
+                ;;
+            --help|-h)
+                show_usage
+                exit 0
+                ;;
+            *)
+                log_error "Неизвестный аргумент: $1"
+                show_usage
+                exit 1
+                ;;
+        esac
+    done
+    
+    # Проверка прав
+    if [[ $EUID -ne 0 ]]; then
+        log_error "Требуются права root"
+        log_info "Запустите: sudo $0 $*"
+        exit 1
+    fi
+    
+    log_info "Режим: $MODE"
+    log_info "Директория: $INSTALL_DIR"
+    log_info "Ветка: $BRANCH"
+    
+    # Очистка диска если нужно
+    if [ "$RUN_CLEANUP" = true ]; then
+        run_cleanup
+    fi
+    
+    # Запуск установки
+    case "$MODE" in
+        "full")
+            run_full_install "$INSTALL_DIR" "$BRANCH"
+            ;;
+        "minimal")
+            run_minimal_install "$INSTALL_DIR" "$BRANCH"
+            ;;
+    esac
 }
 
-# ... остальная часть скрипта ...
+main "$@"

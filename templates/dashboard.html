@@ -1,0 +1,5 @@
+{% extends "base.html" %}{% block content %}<h1>Панель управления</h1><div class="cards">
+<div class="card"><b>Пользователи</b><h2>{{total_users}}</h2><small>активных: {{active_users}}</small></div>
+<div class="card"><b>Платежи</b><h2>{{total_payments}}</h2></div><div class="card"><b>Выручка</b><h2>{{"%.2f"|format(total_revenue)}} ₽</h2></div>
+<div class="card"><b>VPN-конфигурации</b><h2>{{active_configs}}</h2></div></div>
+<h2>Последние пользователи</h2><table><tr><th>ID</th><th>Username</th><th>Имя</th><th>Регистрация</th></tr>{% for u in recent_users %}<tr><td>{{u.user_id}}</td><td>{{u.username or ""}}</td><td>{{u.full_name or ""}}</td><td>{{u.registration_date}}</td></tr>{% endfor %}</table>{% endblock %}

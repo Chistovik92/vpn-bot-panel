@@ -588,6 +588,12 @@ class Database:
         with self.get_connection() as conn:
             conn.execute('DELETE FROM server_bans WHERE id = ?', (ban_id,))
 
+    def clear_server_bans(self, user_id):
+        with self.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute('DELETE FROM server_bans WHERE user_id = ?', (user_id,))
+            return cur.rowcount
+
     def get_global_bans(self):
         with self.get_connection() as conn:
             return conn.execute(

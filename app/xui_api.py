@@ -344,8 +344,10 @@ class XUIAPIManager:
 
     def unban_user_globally(self, user_id, unbanned_by):
         self.db.unban_user(user_id, unbanned_by)
+        removed = self.db.clear_server_bans(user_id)
         self.db.log_action(unbanned_by, 'global_unban',
-                           f'Глобальный разбан пользователя {user_id}')
+                           f'Глобальный разбан пользователя {user_id} '
+                           f'(снято банов: {removed})')
         return True, 'Пользователь разбанен глобально'
 
     def check_and_auto_unban_admins(self):

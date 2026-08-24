@@ -20,6 +20,26 @@ from app.payment import PaymentManager
 logger = logging.getLogger(__name__)
 
 
+def safe_handler(method):
+    """Оборачивает обработчик: логирует исключения и сообщает пользователю."""
+    import functools
+
+    @functools.wraps(method)
+    async def wrapper(self, update: Update, context: CallbackContext):
+        try:
+            return await method(self, update, context)
+        except Exception:
+            logger.exception('Handler %s failed', method.__name__)
+            try:
+                message = getattr(update, 'effective_message', None)
+                if message:
+                    await message.reply_text(
+                        '⚠️ Внутренняя ошибка. Попробуйте позже или /help')
+            except Exception:
+                pass
+    return wrapper
+
+
 class VPNBot:
     def __init__(self):
         self.config = Config()
@@ -74,6 +94,7 @@ class VPNBot:
             self.button_handler, pattern='^(tariff|payment|admin|moderator)_'))
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
 
+    @safe_handler
     async def start(self, update: Update, context: CallbackContext) -> None:
         user = update.effective_user
         self.db.create_user(user.id, user.username or '', user.full_name or '')
@@ -152,6 +173,7 @@ class VPNBot:
         return max(u['free_connections_limit'] - u['used_free_connections'], 0)
 
     # ------------------------------------------------------------ base cmds
+    @safe_handler
     async def help(self, update: Update, context: CallbackContext) -> None:
         await update.message.reply_text(
             '📖 **Справка**\n\n'
@@ -162,11 +184,13 @@ class VPNBot:
             'По вопросам оплаты обращайтесь к администратору.',
             parse_mode='Markdown')
 
+    @safe_handler
     async def balance(self, update: Update, context: CallbackContext) -> None:
         user = update.effective_user
         bal = self.db.get_user_balance(user.id)
         await update.message.reply_text(f'⚖️ Ваш баланс: {bal:.2f} ₽')
 
+    @safe_handler
     async def show_tariffs(self, update: Update, context: CallbackContext) -> None:
         tariffs = self.db.get_all_tariffs()
         if not tariffs:
@@ -191,6 +215,7 @@ class VPNBot:
         await update.message.reply_text(
             text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
+    @safe_handler
     async def my_subscriptions(self, update: Update, context: CallbackContext) -> None:
         subs = self.db.get_user_subscriptions(update.effective_user.id)
         if not subs:
@@ -207,7 +232,13 @@ class VPNBot:
     # ------------------------------------------------------------ purchase
     async def process_tariff_purchase(self, query, tariff_id):
         user_id = query.from_user.id
-        result = self.payment_manager.create_payment(user_id, tariff_id, 'yoomoney')
+        processors = self.payment_manager.get_available_processors()
+        if not processors:
+            await query.edit_message_text(
+                '❌ Платежные системы не настроены. Обратитесь к администратору.')
+            return
+        processor = processors[0] if 'yoomoney' not in processors else 'yoomoney'
+        result = self.payment_manager.create_payment(user_id, tariff_id, processor)
         if not result['success']:
             await query.edit_message_text(f'❌ Ошибка платежа: {result.get("error")}')
             return
@@ -227,6 +258,11 @@ class VPNBot:
         user_id = query.from_user.id
         result = self.payment_manager.check_and_process(payment_id, user_id)
         if result['success']:
+            if result.get('already_activated'):
+                await query.edit_message_text(
+                    '✅ Этот платеж уже был активирован ранее.\n'
+                    'Ваши подключения: /mysubscriptions')
+                return
             cfg = result.get('config_data') or ''
             await query.edit_message_text(
                 '✅ **Оплата подтверждена! Подключение активировано.**\n\n'
@@ -241,6 +277,7 @@ class VPNBot:
             await query.edit_message_text(f'⏳ {reason}', reply_markup=kb)
 
     # -------------------------------------------------------------- staff
+    @safe_handler
     async def admin_panel(self, update: Update, context: CallbackContext) -> None:
         user = update.effective_user
         if not self.db.is_admin(user.id):
@@ -260,6 +297,7 @@ class VPNBot:
             f"💰 Доход: {s['total_revenue']:.2f} ₽",
             reply_markup=InlineKeyboardMarkup(kb), parse_mode='Markdown')
 
+    @safe_handler
     async def moderator_panel(self, update: Update, context: CallbackContext) -> None:
         user = update.effective_user
         if not self.db.is_moderator(user.id):
@@ -274,6 +312,7 @@ class VPNBot:
             f"🎁 Бесплатных осталось: {self._free_left(user.id)}",
             parse_mode='Markdown')
 
+    @safe_handler
     async def show_stats(self, update: Update, context: CallbackContext) -> None:
         user = update.effective_user
         if not self.db.is_moderator(user.id):
@@ -291,6 +330,7 @@ class VPNBot:
                 f"{icon} {server['name']}: {server['current_users']}/{server['max_users']}")
         await update.message.reply_text('\n'.join(lines), parse_mode='Markdown')
 
+    @safe_handler
     async def add_server(self, update: Update, context: CallbackContext) -> None:
         user = update.effective_user
         if not self.db.can_manage_servers(user.id):
@@ -312,6 +352,7 @@ class VPNBot:
         await update.message.reply_text(msg)
         self.db.log_action(user.id, 'add_server', f'{name} ({url})')
 
+    @safe_handler
     async def list_servers(self, update: Update, context: CallbackContext) -> None:
         user = update.effective_user
         if not self.db.can_manage_servers(user.id):
@@ -330,6 +371,7 @@ class VPNBot:
                      f"   👥 {s['current_users']}/{s['max_users']} | sync: {sync}\n")
         await update.message.reply_text(text, parse_mode='Markdown')
 
+    @safe_handler
     async def sync_servers(self, update: Update, context: CallbackContext) -> None:
         user = update.effective_user
         if not self.db.can_manage_servers(user.id):
@@ -345,6 +387,7 @@ class VPNBot:
         await update.message.reply_text(
             f'🔄 Синхронизация завершена: {ok_count}/{len(servers)} серверов')
 
+    @safe_handler
     async def add_moderator(self, update: Update, context: CallbackContext) -> None:
         user = update.effective_user
         if self.db.get_user_role(user.id) != UserRole.SUPER_ADMIN.value:
@@ -359,6 +402,10 @@ class VPNBot:
         except ValueError:
             await update.message.reply_text('❌ Неверный ID')
             return
+        if not self.db.get_user_by_telegram_id(target_id):
+            await update.message.reply_text(
+                '❌ Пользователь не найден. Он должен написать боту /start')
+            return
         settings = (5, False, False, True, True, True, True)
         self.db.update_user_role(target_id, UserRole.MODERATOR.value, settings)
         await update.message.reply_text(
@@ -366,6 +413,7 @@ class VPNBot:
             '(лимит бесплатных подключений: 5)')
         self.db.log_action(user.id, 'add_moderator', f'moderator={target_id}')
 
+    @safe_handler
     async def ban_user(self, update: Update, context: CallbackContext) -> None:
         user = update.effective_user
         if not self.db.is_moderator(user.id):
@@ -398,6 +446,7 @@ class VPNBot:
             f'{icon} Бан ({ban_type}): {message}\nПричина: {reason}')
         self.db.log_action(user.id, 'ban_user', f'user={target_id}: {reason}')
 
+    @safe_handler
     async def unban_user(self, update: Update, context: CallbackContext) -> None:
         user = update.effective_user
         if not self.db.is_moderator(user.id):
@@ -415,6 +464,7 @@ class VPNBot:
         _, message = self.api_manager.unban_user_globally(target_id, user.id)
         await update.message.reply_text(f'✅ {message}')
 
+    @safe_handler
     async def create_free_connection(self, update: Update, context: CallbackContext) -> None:
         user = update.effective_user
         if not self.db.can_create_free_connection(user.id):
@@ -435,6 +485,7 @@ class VPNBot:
             await update.message.reply_text(f'❌ {config_data}')
 
     # ------------------------------------------------------------ callbacks
+    @safe_handler
     async def button_handler(self, update: Update, context: CallbackContext) -> None:
         query = update.callback_query
         await query.answer()
@@ -487,6 +538,7 @@ class VPNBot:
             await query.edit_message_text(text, parse_mode='Markdown')
 
     # -------------------------------------------------------------- messages
+    @safe_handler
     async def handle_message(self, update: Update, context: CallbackContext) -> None:
         text = update.message.text
         routes = {

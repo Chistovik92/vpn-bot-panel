@@ -117,3 +117,99 @@ def test_cleanup_expired_subscriptions(tmp_path, monkeypatch):
                      (past, sub_id))
     assert db.cleanup_expired_subscriptions() >= 1
     assert len(db.get_user_subscriptions(42)) == 0
+
+
+OLD_SCHEMA_SQL = """
+CREATE TABLE users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER UNIQUE NOT NULL,
+    username TEXT,
+    full_name TEXT,
+    balance REAL DEFAULT 0.0,
+    registration_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    is_active BOOLEAN DEFAULT TRUE,
+    last_activity TIMESTAMP
+);
+CREATE TABLE servers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    url TEXT NOT NULL,
+    username TEXT NOT NULL,
+    password TEXT NOT NULL
+);
+CREATE TABLE inbounds (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    server_id INTEGER NOT NULL,
+    inbound_id INTEGER NOT NULL,
+    tag TEXT NOT NULL
+);
+CREATE TABLE subscriptions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    server_id INTEGER NOT NULL,
+    inbound_id INTEGER NOT NULL,
+    tariff_id INTEGER,
+    client_email TEXT NOT NULL,
+    client_uuid TEXT UNIQUE,
+    client_id INTEGER,
+    custom_name TEXT,
+    is_active BOOLEAN DEFAULT TRUE,
+    expiry_date TIMESTAMP,
+    total_gb INTEGER DEFAULT 0
+);
+"""
+
+
+def test_migrates_legacy_schema(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / 'config.ini').write_text(
+        '[DATABASE]\npath = data/test.db\n'
+        '[BOT]\ntoken = T\nadmin_telegram_id = 111111\n', encoding='utf-8')
+    db_path = str(tmp_path / 'data' / 'legacy.db')
+    import os
+    import sqlite3
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    conn = sqlite3.connect(db_path)
+    conn.executescript(OLD_SCHEMA_SQL)
+    # Данные старой версии: юзер с балансом и подписка со старым inbound_id
+    conn.execute(
+        "INSERT INTO users (user_id, username, full_name, balance) "
+        "VALUES (777, 'old', 'Old User', 150)")
+    conn.execute(
+        "INSERT INTO inbounds (id, server_id, inbound_id, tag) VALUES (5, 1, 9, 't')")
+    conn.execute(
+        "INSERT INTO servers (id, name, url, username, password) "
+        "VALUES (1, 's', 'https://x.example.com', 'u', 'p')")
+    conn.execute(
+        "INSERT INTO subscriptions (user_id, server_id, inbound_id, client_email, "
+        "client_uuid, is_active) VALUES (777, 1, 5, 'e@x.y', 'u-legacy', 1)")
+    conn.commit()
+    conn.close()
+
+    from app.database import Database
+    db = Database(db_path)
+
+    # Колонки добавлены, данные сохранены
+    user = db.get_user_by_telegram_id(777)
+    assert user['balance'] == 150
+    assert user['role'] == 'user'
+    assert user['is_banned'] in (0, False)
+
+    subs = db.get_user_subscriptions(777, only_active=False)
+    assert len(subs) == 1
+    assert subs[0]['inbound_row_id'] == 5
+
+    # Схема рабочая: можно писать в новые поля
+    db.create_user(777, 'old', 'Old User Updated')
+    db.update_user_balance(777, -50)
+    assert db.get_user_by_telegram_id(777)['balance'] == 100
+    sub_id = db.create_subscription(
+        777, 1, 5, None, 'new@x.y', 'uuid-new', 'uuid-new', None, False, 30, 10)
+    assert sub_id > 0
+
+
+def test_migration_is_idempotent(tmp_path, monkeypatch):
+    db = make_db(tmp_path, monkeypatch)
+    db.init_db()
+    db.init_db()  # повторный вызов не должен падать или дублировать
+    assert len(db.get_all_tariffs()) >= 3

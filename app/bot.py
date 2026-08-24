@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """VPN Bot Panel - Telegram бот с системой ролей."""
 import logging
+from datetime import time as datetime_time
 
 from telegram import (
     Update, ReplyKeyboardMarkup, KeyboardButton,
@@ -32,6 +33,21 @@ class VPNBot:
 
         self.application = Application.builder().token(self.token).build()
         self.setup_handlers()
+        self.setup_jobs()
+
+    def setup_jobs(self):
+        """Периодические задачи: ежедневная очистка истёкших подписок."""
+        job_queue = self.application.job_queue
+        if job_queue is not None:
+            job_queue.run_daily(
+                self._cleanup_job, time=datetime_time(3, 0),
+                name='cleanup_expired_subscriptions',
+            )
+
+    async def _cleanup_job(self, context: CallbackContext) -> None:
+        expired = self.db.cleanup_expired_subscriptions()
+        if expired:
+            logger.info('Деактивировано истёкших подписок: %s', expired)
 
     # ------------------------------------------------------------- handlers
     def setup_handlers(self):

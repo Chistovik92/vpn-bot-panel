@@ -20,7 +20,7 @@
 - **Память**: 1 GB RAM
 - **Хранилище**: 10 GB SSD
 - **Процессор**: 1 ядро
-- **Порты**: 80, 443, 5000 (или кастомный)
+- **Порты**: 80, 443, 8080 (или кастомный)
 
 ### Рекомендуемые требования
 - **ОС**: Ubuntu 22.04 LTS
@@ -79,10 +79,42 @@ admin_telegram_id = YOUR_TELEGRAM_ID
 /addserver
 
 # Или через веб-панель
-http://your-server:5000/admin
+http://your-server:8080/admin
 ```
 3. Проверьте работу:
 ```bash
 sudo systemctl status vpn-bot-panel
 sudo journalctl -u vpn-bot-panel -f
+```
+## systemd-сервисы
+
+`/etc/systemd/system/vpnbot.service`:
+
+```ini
+[Unit]
+Description=VPN Bot Panel (bot + web)
+After=network.target
+
+[Service]
+Type=simple
+User=vpnbot
+WorkingDirectory=/opt/vpn-bot-panel
+ExecStart=/opt/vpn-bot-panel/venv/bin/python run.py
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now vpnbot
+```
+
+После первого запуска выдайте себе пароль для веб-панели:
+
+```bash
+cd /opt/vpn-bot-panel && ./venv/bin/python -m app.manage set-password <TG_ID>
 ```

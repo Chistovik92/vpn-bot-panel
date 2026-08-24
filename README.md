@@ -274,3 +274,14 @@ python -m app.manage set-role <TELEGRAM_ID> admin
 
 Запуск всего стека (бот + панель): `python run.py`.
 Только бот: `python bot.py`. Только панель: `python web_panel.py`.
+
+### Тесты
+
+```bash
+pip install -r requirements.txt
+pytest -q
+```
+
+CI прогоняет тесты на Python 3.10–3.13 при каждом push/PR в main.
+Подробнее: [docs/architecture.md](docs/architecture.md),
+[docs/configuration.md](docs/configuration.md), [docs/deployment.md](docs/deployment.md).

@@ -41,7 +41,7 @@
 
 ```bash
 # Скачайте скрипт установки
-wget https://raw.githubusercontent.com/yourusername/vpn-bot-panel/main/scripts/install.sh
+wget https://raw.githubusercontent.com/Chistovik92/vpn-bot-panel/main/install.sh
 
 # Сделайте исполняемым
 chmod +x install.sh
@@ -83,8 +83,8 @@ http://your-server:8080/admin
 ```
 3. Проверьте работу:
 ```bash
-sudo systemctl status vpn-bot-panel
-sudo journalctl -u vpn-bot-panel -f
+sudo systemctl status vpnbot
+sudo journalctl -u vpnbot -f
 ```
 ## systemd-сервисы
 

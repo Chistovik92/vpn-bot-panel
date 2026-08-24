@@ -92,13 +92,15 @@ source venv/bin/activate  # Linux/Mac
 # ИЛИ
 venv\Scripts\activate     # Windows
 
-# Запустите бота
+# Запуск всего стека (бот + веб-панель)
+python run.py
+# Только бот
 python bot.py
-Доступ к админ-панели
-Используйте учетные данные, созданные во время установки
 ~~~
 
-Доступ к админ-панели через веб-интерфейс (по умолчанию: http://localhost:5000)
+Доступ к админ-панели через веб-интерфейс (по умолчанию: http://localhost:8080).
+Логин — Telegram ID + пароль (задаётся при установке или через
+`python -m app.manage set-password`).
 
 Мониторинг активности пользователей и платежей
 
@@ -111,17 +113,13 @@ python bot.py
 ini
 [BOT]
 token = ваш_токен_бота
-admin_id = ваш_telegram_id
+admin_telegram_id = ваш_telegram_id
 Платежи
 ini
 [PAYMENTS]
-yookassa_shop_id = ваш_идентификатор_магазина
-yookassa_secret_key = ваш_секретный_ключ
-VPN
-ini
-[VPN]
-configs_path = data/vpn_configs/
-default_server = ваш.vpn.сервер.com
+yoomoney_receiver = номер_кошелька_yoomoney
+yoomoney_token = токен_приложения_yoomoney
+yoomoney_notification_secret = секрет_http_уведомлений
 Безопасность
 ini
 [SECURITY]
@@ -168,7 +166,7 @@ SQLite с ограничениями внешних ключей
 
 ~~~bash
 sudo ./Boot-main-ini
-Затем выберите пункт 17. Обновить панель или используйте скрипт обновления:
+Затем выберите пункт «3. Обновить панель» в меню или используйте скрипт обновления:
 
 bash
 sudo ./update.sh
@@ -196,11 +194,11 @@ pip install -r requirements.txt
 ~~~
 
 ### Проблемы с базой данных
-Восстановите базу данных из резервной копии или выполните сброс:
+Восстановите базу данных из резервной копии (backups/) или выполните проверку/миграцию:
 
 ~~~bash
-sudo ./Boot-main-ini
-Выберите пункт 18. Переустановить панель для повторной инициализации базы данных.
+sudo ./venv/bin/python -m app.manage init
+sudo ./venv/bin/python -m app.manage check
 ~~~
 
 ## Поддержка

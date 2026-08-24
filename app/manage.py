@@ -10,6 +10,10 @@
 import getpass
 import sys
 
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, 'reconfigure'):
+        _stream.reconfigure(encoding='utf-8', errors='replace')
+
 from app.database import Database, UserRole
 
 VALID_ROLES = {r.value for r in UserRole}

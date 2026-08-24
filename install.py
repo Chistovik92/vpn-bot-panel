@@ -1,317 +1,213 @@
+#!/usr/bin/env python3
+"""Интерактивная настройка VPN Bot Panel после установки.
+
+Выполняется внутри venv (обычно вызывается install.sh):
+создаёт config.ini, запрашивает токен бота и Telegram ID администратора,
+инициализирует БД (миграции применяются автоматически) и задаёт пароль
+веб-панели для супер-администратора.
+
+Автоматизация: переменные окружения VPNBOT_TOKEN и VPNBOT_ADMIN_ID.
+"""
+import configparser
 import os
 import sys
-import sqlite3
-import subprocess
-import importlib.util
-import hashlib
-import secrets
-import string
-from getpass import getpass
 
-# Добавляем текущую директорию в путь для импорта
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-try:
-    from database import Database
-    from config import Config
-except ImportError as e:
-    print(f"❌ Import error: {e}")
-    print("📁 Current directory:", os.getcwd())
-    print("📁 Script directory:", os.path.dirname(os.path.abspath(__file__)))
-    print("📁 Files in directory:", [f for f in os.listdir('.') if f.endswith('.py')])
-    sys.exit(1)
+# Корректный вывод эмодзи/кириллицы в консолях с не-UTF-8 кодировкой
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, 'reconfigure'):
+        _stream.reconfigure(encoding='utf-8', errors='replace')
 
-def install_dependencies():
-    """Install exactly the dependencies declared by the project."""
-    print("📦 Installing dependencies from requirements.txt...")
-    try:
-        subprocess.check_call([
-            sys.executable, "-m", "pip", "install", "-r", "requirements.txt"
-        ])
-        print("✅ Dependencies installed successfully")
-    except subprocess.CalledProcessError as e:
-        print(f"❌ Failed to install dependencies: {e}")
-        sys.exit(1)
+from getpass import getpass
 
-def create_config():
-    """Create configuration file"""
-    print("⚙️  Creating configuration file...")
-    try:
-        config = Config()
-        config.create_config()
-        print("✅ Configuration file created")
-    except Exception as e:
-        print(f"❌ Failed to create configuration file: {e}")
-        sys.exit(1)
 
-def init_database():
-    """Initialize database"""
-    print("🗃️ Initializing database...")
-    try:
-        db = Database()
-        db.init_db()
-        print("✅ Database initialized")
-    except Exception as e:
-        print(f"❌ Failed to initialize database: {e}")
-        sys.exit(1)
-
-def generate_password(length=12):
-    """Generate secure random password"""
-    alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
-    return ''.join(secrets.choice(alphabet) for _ in range(length))
-
-def hash_password(password):
-    """Hash password using SHA-256 with salt"""
-    salt = os.urandom(32)
-    password_hash = hashlib.pbkdf2_hmac('sha256', password.encode(), salt, 100000)
-    return salt.hex() + ':' + password_hash.hex()
-
-def verify_password(stored_password, provided_password):
-    """Verify a password against stored hash"""
-    salt_hex, password_hash_hex = stored_password.split(':')
-    salt = bytes.fromhex(salt_hex)
-    new_hash = hashlib.pbkdf2_hmac('sha256', provided_password.encode(), salt, 100000)
-    return new_hash.hex() == password_hash_hex
-
-def setup_admin_account():
-    """Setup admin account interactively"""
-    print("\n👑 Setting up administrator account...")
-    
-    db = Database()
-    
+def ask(prompt, default='', validate=None, error='Некорректное значение',
+       secret=False):
+    """Интерактивный ввод с валидацией; EOF/Ctrl+D трактуется как пропуск."""
     while True:
-        print("\nChoose an option:")
-        print("1. Enter admin credentials manually")
-        print("2. Generate credentials automatically") 
-        print("3. Skip admin setup (configure later)")
-        
-        choice = input("\nEnter your choice (1-3): ").strip()
-        
-        if choice == '1':
-            return setup_manual_admin(db)
-        elif choice == '2':
-            return setup_auto_admin(db)
-        elif choice == '3':
-            print("⚠️  Admin setup skipped. You can configure it later in the admin panel.")
-            return True
-        else:
-            print("❌ Invalid choice. Please try again.")
+        try:
+            raw = (getpass(prompt) if secret else input(prompt)).strip()
+        except EOFError:
+            return default
+        if not raw and default:
+            return default
+        if not raw:
+            continue
+        if validate is None or validate(raw):
+            return raw
+        print(f'  ❌ {error}')
 
-def setup_manual_admin(db):
-    """Setup admin with manual credentials"""
-    print("\n📝 Manual admin setup:")
-    
-    # Telegram ID
-    while True:
-        telegram_id = input("Enter admin Telegram ID: ").strip()
-        if telegram_id.isdigit():
-            telegram_id = int(telegram_id)
-            break
-        else:
-            print("❌ Telegram ID must be a number. Please try again.")
-    
-    # Username
-    while True:
-        username = input("Enter admin username: ").strip()
-        if username:
-            # Check if username already exists
-            existing_admin = db.get_admin_by_username(username)
-            if existing_admin:
-                print("❌ Username already exists. Please choose another one.")
-            else:
-                break
-        else:
-            print("❌ Username cannot be empty.")
-    
-    # Password
-    while True:
-        password = getpass("Enter admin password (min 8 characters): ").strip()
-        if len(password) >= 8:
-            confirm = getpass("Confirm password: ").strip()
-            if password == confirm:
-                break
-            else:
-                print("❌ Passwords don't match. Please try again.")
-        else:
-            print("❌ Password must be at least 8 characters long.")
-    
-    # Full name
-    full_name = input("Enter admin full name (optional): ").strip()
-    if not full_name:
-        full_name = "Administrator"
-    
-    return save_admin_to_db(db, telegram_id, username, password, full_name)
 
-def setup_auto_admin(db):
-    """Setup admin with auto-generated credentials"""
-    print("\n🎲 Auto-generating admin credentials...")
-    
-    # Telegram ID
-    while True:
-        telegram_id = input("Enter admin Telegram ID: ").strip()
-        if telegram_id.isdigit():
-            telegram_id = int(telegram_id)
-            break
-        else:
-            print("❌ Telegram ID must be a number. Please try again.")
-    
-    # Generate unique username
-    username = f"admin_{telegram_id}"
-    counter = 1
-    while db.get_admin_by_username(username):
-        username = f"admin_{telegram_id}_{counter}"
-        counter += 1
-    
-    password = generate_password()
-    full_name = "System Administrator"
-    
-    print(f"\n✅ Auto-generated credentials:")
-    print(f"   Username: {username}")
-    print(f"   Password: {password}")
-    print(f"   Full name: {full_name}")
-    print(f"   Telegram ID: {telegram_id}")
-    
-    print("\n💾 Saving credentials...")
-    return save_admin_to_db(db, telegram_id, username, password, full_name)
+def valid_token(token):
+    parts = token.split(':', 1)
+    return len(token) >= 30 and parts[0].isdigit() and len(parts) == 2
 
-def save_admin_to_db(db, telegram_id, username, password, full_name):
-    """Save admin account to database"""
-    try:
-        password_hash = hash_password(password)
-        
-        with db.get_connection() as conn:
-            cursor = conn.cursor()
-            
-            # Check if admin already exists
-            cursor.execute('SELECT * FROM admins WHERE telegram_id = ? OR username = ?', 
-                         (telegram_id, username))
-            existing_admin = cursor.fetchone()
-            
-            if existing_admin:
-                # Update existing admin
-                cursor.execute('''
-                    UPDATE admins 
-                    SET username = ?, password_hash = ?, full_name = ?, is_active = TRUE
-                    WHERE telegram_id = ?
-                ''', (username, password_hash, full_name, telegram_id))
-                action = "updated"
-            else:
-                # Insert new admin
-                cursor.execute('''
-                    INSERT INTO admins (telegram_id, username, password_hash, full_name, is_active, role)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                ''', (telegram_id, username, password_hash, full_name, True, 'superadmin'))
-                action = "created"
-            
-            conn.commit()
-        
-        print(f"✅ Admin account {action} successfully!")
-        print(f"   Username: {username}")
-        print(f"   Telegram ID: {telegram_id}")
-        
-        return True
-        
-    except Exception as e:
-        print(f"❌ Failed to save admin account: {e}")
-        return False
 
-def setup_bot_config():
-    """Setup bot configuration interactively"""
-    print("\n🤖 Bot configuration setup:")
-    
+def load_or_create_config():
+    from app.config import Config
     config = Config()
-    
-    # Load existing config or create new
-    if os.path.exists(config.config_file):
+    if not os.path.exists(config.config_file):
+        config.create_default_config()
+    else:
         config.load_config()
-    
-    # Bot token
-    print("\nTelegram Bot Token:")
-    print("1. Enter token now")
-    print("2. Skip and configure later in config.ini")
-    
-    choice = input("Enter your choice (1-2): ").strip()
-    
-    if choice == '1':
-        while True:
-            token = input("Enter your bot token: ").strip()
-            if token and len(token) >= 40 and token.split(':', 1)[0].isdigit():
-                config.config['BOT']['token'] = token
-                print("✅ Bot token saved")
-                break
-            else:
-                print("❌ Invalid bot token format. Should look like a Telegram bot token.")
-    
-    # Admin ID for bot notifications
-    print("\nAdmin Telegram ID for bot notifications:")
-    print("1. Enter admin ID now") 
-    print("2. Skip and configure later")
-    
-    choice = input("Enter your choice (1-2): ").strip()
-    
-    if choice == '1':
-        admin_id = input("Enter admin Telegram ID: ").strip()
-        if admin_id and admin_id.isdigit():
-            config.config['BOT']['admin_id'] = admin_id
-            print("✅ Admin ID saved")
-    
-    # Save config
-    try:
-        with open(config.config_file, 'w', encoding='utf-8') as configfile:
-            config.config.write(configfile)
-        print("✅ Configuration saved to config.ini")
-        
-        # Set secure permissions for config file
-        os.chmod(config.config_file, 0o600)
-        print("✅ Secure permissions set for config.ini")
-        
-    except Exception as e:
-        print(f"❌ Failed to save configuration: {e}")
+    # Гарантируем наличие всех секций новой схемы
+    changed = False
+    defaults = {
+        'DATABASE': {'path': 'data/vpn_bot.db', 'backup_path': 'data/backups/'},
+        'WEB': {'host': '127.0.0.1', 'port': '8080', 'debug': 'False'},
+        'PAYMENTS': {'yoomoney_receiver': '', 'yoomoney_token': '',
+                     'yoomoney_notification_secret': '', 'cryptobot_token': ''},
+        'SECURITY': {'max_login_attempts': '5',
+                     'lockout_duration_minutes': '30',
+                     'session_timeout_minutes': '60',
+                     'password_min_length': '8'},
+        'LOGGING': {'level': 'INFO', 'file': 'logs/vpn_bot.log'},
+    }
+    for section, options in defaults.items():
+        if not config.config.has_section(section):
+            config.config.add_section(section)
+            changed = True
+        for key, value in options.items():
+            if not config.config.has_option(section, key):
+                config.config.set(section, key, value)
+                changed = True
+    if changed:
+        with open(config.config_file, 'w', encoding='utf-8') as f:
+            config.config.write(f)
+    return config
 
-def display_final_instructions():
-    """Display final instructions after installation"""
-    print("\n" + "="*60)
-    print("🎉 INSTALLATION COMPLETED SUCCESSFULLY!")
-    print("="*60)
-    
-    print("\n📝 NEXT STEPS:")
-    print("1. Edit config.ini to complete your configuration:")
-    print("   - Verify bot token in [BOT] section")
-    print("   - Configure payment methods in [PAYMENTS] section") 
-    print("   - Adjust VPN settings in [VPN] section")
-    
-    print("\n2. Start the bot:")
-    print("   python bot.py")
-    
-    print("\n3. Access the admin panel:")
-    print("   - Use the credentials you created during installation")
-    print("   - Or run this installer again to create new admin accounts")
-    
-    print("\n🔐 SECURITY RECOMMENDATIONS:")
-    print("   - Change default passwords regularly")
-    print("   - Keep your server and dependencies updated")
-    print("   - Regularly backup your database")
-    print("   - Monitor logs for suspicious activity")
-    
-    print("\n🔧 For support and updates, visit:")
-    print("   https://github.com/Chistovik92/vpn-bot-panel")
-    print("\n")
+
+def save_config(config):
+    with open(config.config_file, 'w', encoding='utf-8') as f:
+        config.config.write(f)
+    try:
+        os.chmod(config.config_file, 0o600)
+    except OSError:
+        pass
+
+
+def setup_token_and_admin(config):
+    env_token = os.environ.get('VPNBOT_TOKEN', '').strip()
+    env_admin = os.environ.get('VPNBOT_ADMIN_ID', '').strip()
+
+    if env_token and valid_token(env_token):
+        token = env_token
+    elif env_token:
+        print('  ⚠️ VPNBOT_TOKEN в окружении некорректен, запрашиваю вручную')
+        token = None
+    elif not sys.stdin.isatty():
+        token = None
+    else:
+        token = None
+
+    if token is None and sys.stdin.isatty():
+        token = ask(
+            '\n🤖 Токен бота от @BotFather\n> ',
+            validate=valid_token,
+            error='Токен должен быть вида 123456789:ABC...')
+
+    if token:
+        if not config.config.has_section('BOT'):
+            config.config.add_section('BOT')
+        config.config.set('BOT', 'token', token)
+        print('  ✅ Токен сохранён')
+
+    admin_raw = env_admin
+    if not admin_raw and sys.stdin.isatty():
+        admin_raw = ask(
+            '\n👑 Telegram ID администратора (профиль в боте получит роль super_admin)\n> ',
+            validate=lambda v: v.isdigit(),
+            error='ID должен состоять из цифр')
+    if admin_raw.isdigit():
+        config.config.set('BOT', 'admin_telegram_id', admin_raw)
+        print(f'  ✅ Администратор: {admin_raw}')
+
+    save_config(config)
+
+    if not config.validate_config():
+        print('\n  ⚠️ Токен бота не задан. Внесите его позже в config.ini [BOT] token.')
+    if not config.get_admin_telegram_id():
+        print('  ⚠️ admin_telegram_id не задан. Супер-админ не будет создан!')
+
+
+def init_database(config):
+    from app.database import Database
+    db = Database(config.get_database_path())
+    print(f'✅ База данных готова: {db.db_path}')
+    return db
+
+
+def ensure_super_admin(db, config):
+    admin_tg = config.get_admin_telegram_id()
+    if not admin_tg:
+        return None
+    user = db.get_user_by_telegram_id(admin_tg)
+    if user:
+        if user['role'] != 'super_admin':
+            db.update_user_role(admin_tg, 'super_admin')
+            print(f'✅ Роль пользователя {admin_tg} повышена до super_admin')
+    else:
+        db.create_user(admin_tg, 'admin', 'System Administrator',
+                       role='super_admin')
+        print(f'✅ Создан супер-администратор: {admin_tg}')
+    return admin_tg
+
+
+def setup_panel_password(db, admin_tg):
+    if not admin_tg:
+        return
+    min_len = db.config.get_security_settings()['password_min_length']
+
+    def ok(p):
+        return len(p) >= min_len
+
+    # 1) переменная окружения (автоустановка), 2) интерактивный ввод,
+    # 3) предупреждение и выход без пароля
+    password = os.environ.get('VPNBOT_PANEL_PASSWORD', '')
+    if password and not ok(password):
+        print(f'  ⚠️ VPNBOT_PANEL_PASSWORD короче {min_len} символов — игнорируется')
+        password = ''
+    if not password and sys.stdin.isatty():
+        password = ask(
+            f'\n🔐 Пароль для входа в веб-панель (мин. {min_len} символов)\n> ',
+            validate=ok, error=f'Минимум {min_len} символов', secret=True)
+        confirm = ask('Повторите пароль\n> ', validate=ok,
+                      error='Минимум символов', secret=True)
+        if password != confirm:
+            print('  ❌ Пароли не совпадают. Задайте позже:')
+            print(f'     python -m app.manage set-password {admin_tg}')
+            return
+    if not ok(password):
+        print('  ⚠️ Пароль панели не задан (VPNBOT_PANEL_PASSWORD). '
+              'Вход в панель будет невозможен, пока не выполните:\n'
+              '     python -m app.manage set-password <TG_ID>')
+        return
+    db.set_password(admin_tg, password)
+    print('  ✅ Пароль веб-панели установлен')
+
 
 def main():
-    """Main installation function"""
-    print("🚀 Starting VPN Bot Panel installation...")
-    
-    # Check if requirements.txt exists
-    if not os.path.exists("requirements.txt"):
-        print("❌ requirements.txt not found")
-        sys.exit(1)
-    
-    install_dependencies()
-    create_config()
-    init_database()
-    setup_admin_account()
-    setup_bot_config()
-    display_final_instructions()
+    print('=== Настройка VPN Bot Panel ===')
+    config = load_or_create_config()
+    print(f'✅ Конфигурация: {config.config_file}')
 
-if __name__ == "__main__":
-    main()
+    setup_token_and_admin(config)
+
+    # Перечитываем конфиг после изменений
+    config.load_config()
+    db = init_database(config)
+    admin_tg = ensure_super_admin(db, config)
+    setup_panel_password(db, admin_tg)
+
+    print('\n=== Настройка завершена ===')
+    print('Запуск: python run.py  (бот + панель)')
+    print('Проверка состояния: python -m app.manage check')
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except KeyboardInterrupt:
+        print('\nУстановка прервана пользователем')
+        sys.exit(130)

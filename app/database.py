@@ -1,11 +1,18 @@
+﻿"""Р‘Р°Р·Р° РґР°РЅРЅС‹С… VPN Bot Panel (SQLite).
+
+Р•РґРёРЅР°СЏ СЃС…РµРјР°: РїРѕР»СЊР·РѕРІР°С‚РµР»Рё СЃ СЂРѕР»СЏРјРё, СЃРµСЂРІРµСЂС‹ 3x-ui, inbounds, С‚Р°СЂРёС„С‹,
+РїРѕРґРїРёСЃРєРё, РїР»Р°С‚РµР¶Рё, Р±Р°РЅС‹, СЂРµРєР»Р°РјРЅС‹Рµ РєР°РјРїР°РЅРёРё, Р»РѕРіРё РґРµР№СЃС‚РІРёР№.
+"""
 import os
 import sqlite3
 import hashlib
 import secrets
-import json
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from enum import Enum
+
+from app.config import Config
+
 
 class UserRole(Enum):
     USER = "user"
@@ -13,149 +20,22 @@ class UserRole(Enum):
     ADMIN = "admin"
     SUPER_ADMIN = "super_admin"
 
+
 class Database:
-        # Добавить эти методы в класс Database
-
-    def get_server(self, server_id):
-        """Получение сервера по ID"""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('SELECT * FROM servers WHERE id = ?', (server_id,))
-            return cursor.fetchone()
-
-    def get_tariff(self, tariff_id):
-        """Получение тарифа по ID"""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('SELECT * FROM tariffs WHERE id = ?', (tariff_id,))
-            return cursor.fetchone()
-
-    def get_all_tariffs(self):
-        """Получение всех тарифов"""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('SELECT * FROM tariffs ORDER BY price')
-            return cursor.fetchall()
-
-    def get_inbounds(self, server_id):
-        """Получение inbound подключений сервера"""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('SELECT * FROM inbounds WHERE server_id = ? AND enable = TRUE', (server_id,))
-            return cursor.fetchall()
-
-    def add_inbound(self, server_id, inbound_id, tag, port, protocol, listen, remark):
-        """Добавление inbound подключения"""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT OR REPLACE INTO inbounds 
-                (server_id, inbound_id, tag, port, protocol, listen, remark)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (server_id, inbound_id, tag, port, protocol, listen, remark))
-
-    def create_subscription(self, user_id, server_id, inbound_id, tariff_id, client_email, 
-                          client_uuid, client_id, custom_name, is_free, expiry_days, total_gb):
-        """Создание подписки"""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            expiry_date = datetime.now() + timedelta(days=expiry_days)
-            
-            cursor.execute('''
-                INSERT INTO subscriptions 
-                (user_id, server_id, inbound_id, tariff_id, client_email, client_uuid, 
-                 client_id, custom_name, is_free, expiry_date, total_gb)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (user_id, server_id, inbound_id, tariff_id, client_email, client_uuid,
-                  client_id, custom_name, is_free, expiry_date, total_gb))
-            
-            return cursor.lastrowid
-
-    def deactivate_subscription(self, subscription_id):
-        """Деактивация подписки"""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('UPDATE subscriptions SET is_active = FALSE WHERE id = ?', (subscription_id,))
-
-    def get_user_subscriptions_on_server(self, user_id, server_id):
-        """Получение подписок пользователя на сервере"""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                SELECT * FROM subscriptions 
-                WHERE user_id = ? AND server_id = ? AND is_active = TRUE
-            ''', (user_id, server_id))
-            return cursor.fetchall()
-
-    def get_server_bans_for_user(self, user_id, server_id):
-        """Получение банов пользователя на сервере"""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                SELECT * FROM server_bans 
-                WHERE user_id = ? AND server_id = ?
-            ''', (user_id, server_id))
-            return cursor.fetchall()
-
-    def remove_server_ban(self, ban_id):
-        """Удаление бана на сервере"""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('DELETE FROM server_bans WHERE id = ?', (ban_id,))
-
-    def get_admin_and_moderator_users(self):
-        """Получение администраторов и модераторов"""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                SELECT * FROM users 
-                WHERE role IN (?, ?, ?) AND is_active = TRUE AND is_banned = FALSE
-            ''', (UserRole.MODERATOR.value, UserRole.ADMIN.value, UserRole.SUPER_ADMIN.value))
-            return cursor.fetchall()
-
-    def create_payment(self, user_id, tariff_id, amount, payment_method, transaction_id):
-        """Создание записи о платеже"""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT INTO payments (user_id, tariff_id, amount, payment_method, transaction_id)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (user_id, tariff_id, amount, payment_method, transaction_id))
-            return cursor.lastrowid
-
-    def update_payment_status(self, transaction_id, status):
-        """Обновление статуса платежа"""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                UPDATE payments SET status = ? WHERE transaction_id = ?
-            ''', (status, transaction_id))
-
-    def update_user_balance(self, user_id, amount):
-        """Обновление баланса пользователя"""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                UPDATE users SET balance = balance + ? WHERE user_id = ?
-            ''', (amount, user_id))
     def __init__(self, db_path=None):
-        from app.config import Config
         self.config = Config()
         self.db_path = db_path or self.config.get_database_path()
-        self._ensure_directories()
-    
-    def _ensure_directories(self):
-        """Создание необходимых директорий"""
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
-    
+        self.init_db()
+
+    # ----------------------------------------------------------- connections
     @contextmanager
     def get_connection(self):
-        """Контекстный менеджер для соединения с БД"""
+        """РљРѕРЅС‚РµРєСЃС‚РЅС‹Р№ РјРµРЅРµРґР¶РµСЂ РґР»СЏ СЃРѕРµРґРёРЅРµРЅРёСЏ СЃ Р‘Р”."""
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
         conn.execute("PRAGMA journal_mode=WAL")
-        
         try:
             yield conn
             conn.commit()
@@ -164,20 +44,21 @@ class Database:
             raise
         finally:
             conn.close()
-    
+
+    # ---------------------------------------------------------------- schema
     def init_db(self):
-        """Инициализация базы данных с расширенной структурой"""
+        """РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ СЃС…РµРјС‹ Р‘Р”."""
         with self.get_connection() as conn:
-            cursor = conn.cursor()
-            
-            # Пользователи системы (все роли)
-            cursor.execute('''
+            c = conn.cursor()
+
+            c.execute('''
                 CREATE TABLE IF NOT EXISTS users (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id INTEGER UNIQUE NOT NULL,
                     username TEXT,
                     full_name TEXT,
                     role TEXT DEFAULT 'user',
+                    password_hash TEXT,
                     balance REAL DEFAULT 0.0,
                     registration_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     is_active BOOLEAN DEFAULT TRUE,
@@ -188,12 +69,11 @@ class Database:
                     last_activity TIMESTAMP,
                     free_connections_limit INTEGER DEFAULT 0,
                     used_free_connections INTEGER DEFAULT 0,
-                    FOREIGN KEY (banned_by) REFERENCES users (id)
+                    FOREIGN KEY (banned_by) REFERENCES users (user_id)
                 )
             ''')
-            
-            # Серверы 3x-ui
-            cursor.execute('''
+
+            c.execute('''
                 CREATE TABLE IF NOT EXISTS servers (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL,
@@ -207,12 +87,11 @@ class Database:
                     last_sync TIMESTAMP,
                     created_by INTEGER,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (created_by) REFERENCES users (id)
+                    FOREIGN KEY (created_by) REFERENCES users (user_id)
                 )
             ''')
-            
-            # Inbound подключения на серверах
-            cursor.execute('''
+
+            c.execute('''
                 CREATE TABLE IF NOT EXISTS inbounds (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     server_id INTEGER NOT NULL,
@@ -226,18 +105,15 @@ class Database:
                     total INTEGER DEFAULT 0,
                     remark TEXT,
                     enable BOOLEAN DEFAULT TRUE,
-                    is_reserved BOOLEAN DEFAULT FALSE,
-                    reserved_for INTEGER,
                     FOREIGN KEY (server_id) REFERENCES servers (id) ON DELETE CASCADE,
-                    FOREIGN KEY (reserved_for) REFERENCES users (id)
+                    UNIQUE (server_id, inbound_id)
                 )
             ''')
-            
-            # Тарифы
-            cursor.execute('''
+
+            c.execute('''
                 CREATE TABLE IF NOT EXISTS tariffs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL,
+                    name TEXT NOT NULL UNIQUE,
                     description TEXT,
                     formatted_description TEXT,
                     price REAL NOT NULL,
@@ -246,22 +122,21 @@ class Database:
                     is_active BOOLEAN DEFAULT TRUE,
                     created_by INTEGER,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    buttons_json TEXT, -- JSON с кнопками
-                    FOREIGN KEY (created_by) REFERENCES users (id)
+                    buttons_json TEXT,
+                    FOREIGN KEY (created_by) REFERENCES users (user_id)
                 )
             ''')
-            
-            # Подписки пользователей
-            cursor.execute('''
+
+            c.execute('''
                 CREATE TABLE IF NOT EXISTS subscriptions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id INTEGER NOT NULL,
                     server_id INTEGER NOT NULL,
-                    inbound_id INTEGER NOT NULL,
+                    inbound_row_id INTEGER NOT NULL,
                     tariff_id INTEGER,
                     client_email TEXT NOT NULL,
                     client_uuid TEXT UNIQUE,
-                    client_id INTEGER,
+                    client_id TEXT,
                     custom_name TEXT,
                     is_active BOOLEAN DEFAULT TRUE,
                     is_free BOOLEAN DEFAULT FALSE,
@@ -270,14 +145,12 @@ class Database:
                     used_gb REAL DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE CASCADE,
-                    FOREIGN KEY (server_id) REFERENCES servers (id) ON DELETE CASCADE,
-                    FOREIGN KEY (inbound_id) REFERENCES inbounds (id) ON DELETE CASCADE,
+                    FOREIGN KEY (inbound_row_id) REFERENCES inbounds (id) ON DELETE CASCADE,
                     FOREIGN KEY (tariff_id) REFERENCES tariffs (id) ON DELETE SET NULL
                 )
             ''')
-            
-            # Платежи
-            cursor.execute('''
+
+            c.execute('''
                 CREATE TABLE IF NOT EXISTS payments (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id INTEGER NOT NULL,
@@ -292,26 +165,24 @@ class Database:
                     FOREIGN KEY (tariff_id) REFERENCES tariffs (id) ON DELETE SET NULL
                 )
             ''')
-            
-            # Баны пользователей на серверах
-            cursor.execute('''
+
+            c.execute('''
                 CREATE TABLE IF NOT EXISTS server_bans (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id INTEGER NOT NULL,
                     server_id INTEGER NOT NULL,
-                    client_id INTEGER,
+                    client_uuid TEXT,
                     banned_by INTEGER,
                     ban_reason TEXT,
                     banned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     is_global BOOLEAN DEFAULT FALSE,
                     FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE CASCADE,
                     FOREIGN KEY (server_id) REFERENCES servers (id) ON DELETE CASCADE,
-                    FOREIGN KEY (banned_by) REFERENCES users (id)
+                    FOREIGN KEY (banned_by) REFERENCES users (user_id)
                 )
             ''')
-            
-            # Рекламные кампании
-            cursor.execute('''
+
+            c.execute('''
                 CREATE TABLE IF NOT EXISTS ad_campaigns (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL,
@@ -326,27 +197,37 @@ class Database:
                     is_approved BOOLEAN DEFAULT FALSE,
                     approved_by INTEGER,
                     approved_at TIMESTAMP,
-                    FOREIGN KEY (created_by) REFERENCES users (id),
-                    FOREIGN KEY (approved_by) REFERENCES users (id)
+                    FOREIGN KEY (created_by) REFERENCES users (user_id),
+                    FOREIGN KEY (approved_by) REFERENCES users (user_id)
                 )
             ''')
-            
-            # Логи действий
-            cursor.execute('''
+
+            c.execute('''
                 CREATE TABLE IF NOT EXISTS action_logs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
+                    user_id INTEGER,
                     action TEXT NOT NULL,
                     details TEXT,
                     ip_address TEXT,
                     user_agent TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES users (id)
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
-            
-            # Настройки модераторов
-            cursor.execute('''
+
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS audit_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    admin_id INTEGER NOT NULL,
+                    action TEXT NOT NULL,
+                    description TEXT,
+                    ip_address TEXT,
+                    user_agent TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (admin_id) REFERENCES users (user_id)
+                )
+            ''')
+
+            c.execute('''
                 CREATE TABLE IF NOT EXISTS moderator_settings (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id INTEGER UNIQUE NOT NULL,
@@ -358,346 +239,562 @@ class Database:
                     can_ban_users BOOLEAN DEFAULT TRUE,
                     requires_approval BOOLEAN DEFAULT TRUE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+                    FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE CASCADE
                 )
             ''')
-            
-            # Создание супер администратора по умолчанию
-            default_admin = self.get_user_by_telegram_id(1)  # Telegram ID 1 для демо
-            if not default_admin:
-                cursor.execute('''
-                    INSERT INTO users (user_id, username, full_name, role, free_connections_limit)
-                    VALUES (?, ?, ?, ?, ?)
-                ''', (1, 'admin', 'System Administrator', UserRole.SUPER_ADMIN.value, 9999))
-            
-            # Создание тарифов по умолчанию
+
+            # РЎСѓРїРµСЂ-Р°РґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂ РёР· РєРѕРЅС„РёРіСѓСЂР°С†РёРё (РЅРёРєР°РєРёС… РґРµРјРѕ-Р°РєРєР°СѓРЅС‚РѕРІ)
+            admin_tg = self.config.get_admin_telegram_id()
+            if admin_tg and not self._fetchone(c, 'SELECT 1 FROM users WHERE user_id = ?', (admin_tg,)):
+                c.execute(
+                    '''INSERT INTO users (user_id, username, full_name, role, free_connections_limit)
+                       VALUES (?, 'admin', 'System Administrator', ?, 9999)''',
+                    (admin_tg, UserRole.SUPER_ADMIN.value),
+                )
+
+            # РўР°СЂРёС„С‹ РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ
             default_tariffs = [
-                ('Basic - 30 дней', 'Базовый тариф на 30 дней', '🔹 <b>Basic - 30 дней</b>\n📅 Срок: 30 дней\n📊 Трафик: 50 GB\n💎 Стабильное соединение', 5.0, 30, 50),
-                ('Standard - 90 дней', 'Стандартный тариф на 90 дней', '🔹 <b>Standard - 90 дней</b>\n📅 Срок: 90 дней\n📊 Трафик: 100 GB\n⚡ Высокая скорость', 12.0, 90, 100),
-                ('Premium - 180 дней', 'Премиум тариф на 180 дней', '🔹 <b>Premium - 180 дней</b>\n📅 Срок: 180 дней\n📊 Трафик: 200 GB\n🚀 Максимальная скорость', 20.0, 180, 200),
+                ('Basic - 30 РґРЅРµР№', 'Р‘Р°Р·РѕРІС‹Р№ С‚Р°СЂРёС„ РЅР° 30 РґРЅРµР№',
+                 'рџ”№ <b>Basic - 30 РґРЅРµР№</b>\nрџ“… РЎСЂРѕРє: 30 РґРЅРµР№\nрџ“Љ РўСЂР°С„РёРє: 50 GB\nрџ’Ћ РЎС‚Р°Р±РёР»СЊРЅРѕРµ СЃРѕРµРґРёРЅРµРЅРёРµ',
+                 5.0, 30, 50),
+                ('Standard - 90 РґРЅРµР№', 'РЎС‚Р°РЅРґР°СЂС‚РЅС‹Р№ С‚Р°СЂРёС„ РЅР° 90 РґРЅРµР№',
+                 'рџ”№ <b>Standard - 90 РґРЅРµР№</b>\nрџ“… РЎСЂРѕРє: 90 РґРЅРµР№\nрџ“Љ РўСЂР°С„РёРє: 100 GB\nвљЎ Р’С‹СЃРѕРєР°СЏ СЃРєРѕСЂРѕСЃС‚СЊ',
+                 12.0, 90, 100),
+                ('Premium - 180 РґРЅРµР№', 'РџСЂРµРјРёСѓРј С‚Р°СЂРёС„ РЅР° 180 РґРЅРµР№',
+                 'рџ”№ <b>Premium - 180 РґРЅРµР№</b>\nрџ“… РЎСЂРѕРє: 180 РґРЅРµР№\nрџ“Љ РўСЂР°С„РёРє: 200 GB\nрџљЂ РњР°РєСЃРёРјР°Р»СЊРЅР°СЏ СЃРєРѕСЂРѕСЃС‚СЊ',
+                 20.0, 180, 200),
             ]
-            
-            admin_id = 1
-            for tariff in default_tariffs:
-                cursor.execute('''
-                    INSERT OR IGNORE INTO tariffs (name, description, formatted_description, price, duration_days, traffic_gb, created_by)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                ''', (*tariff, admin_id))
-            
-            # Создание индексов
+            for t in default_tariffs:
+                c.execute(
+                    '''INSERT OR IGNORE INTO tariffs
+                       (name, description, formatted_description, price, duration_days, traffic_gb)
+                       VALUES (?, ?, ?, ?, ?, ?)''',
+                    t,
+                )
+
             indexes = [
                 'CREATE INDEX IF NOT EXISTS idx_users_user_id ON users(user_id)',
                 'CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)',
                 'CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions(user_id)',
                 'CREATE INDEX IF NOT EXISTS idx_subscriptions_expiry ON subscriptions(expiry_date)',
+                'CREATE INDEX IF NOT EXISTS idx_inbounds_server ON inbounds(server_id)',
                 'CREATE INDEX IF NOT EXISTS idx_servers_active ON servers(is_active)',
+                'CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status)',
                 'CREATE INDEX IF NOT EXISTS idx_server_bans_user ON server_bans(user_id)',
-                'CREATE INDEX IF NOT EXISTS idx_server_bans_global ON server_bans(is_global)',
+                'CREATE INDEX IF NOT EXISTS idx_action_logs_created ON action_logs(created_at)',
             ]
-            
-            for index_sql in indexes:
-                cursor.execute(index_sql)
-            
-            # Установка безопасных прав
-            if os.path.exists(self.db_path):
+            for idx in indexes:
+                c.execute(idx)
+
+            try:
                 os.chmod(self.db_path, 0o600)
-    
+            except OSError:
+                pass
+
+    @staticmethod
+    def _fetchone(cursor, sql, params=()):
+        cursor.execute(sql, params)
+        return cursor.fetchone()
+
+    # ------------------------------------------------------------ passwords
     def _hash_password(self, password):
-        """Хеширование пароля"""
         salt = os.urandom(32)
-        password_hash = hashlib.pbkdf2_hmac('sha256', password.encode(), salt, 100000)
-        return salt.hex() + ':' + password_hash.hex()
-    
+        digest = hashlib.pbkdf2_hmac('sha256', password.encode(), salt, 200_000)
+        return salt.hex() + ':' + digest.hex()
+
     def verify_password(self, stored_password, provided_password):
-        """Проверка пароля"""
         try:
-            salt_hex, password_hash_hex = stored_password.split(':')
-            salt = bytes.fromhex(salt_hex)
-            new_hash = hashlib.pbkdf2_hmac('sha256', provided_password.encode(), salt, 100000)
-            return new_hash.hex() == password_hash_hex
-        except:
+            salt_hex, digest_hex = stored_password.split(':')
+            digest = hashlib.pbkdf2_hmac(
+                'sha256', provided_password.encode(), bytes.fromhex(salt_hex), 200_000
+            )
+            return secrets.compare_digest(digest.hex(), digest_hex)
+        except (ValueError, AttributeError, TypeError):
             return False
-    
-    # Методы для работы с пользователями и ролями
+
+    # ------------------------------------------------------------- users
     def get_user_by_telegram_id(self, telegram_id):
-        """Получение пользователя по Telegram ID"""
         with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('SELECT * FROM users WHERE user_id = ?', (telegram_id,))
-            return cursor.fetchone()
-    
+            return self._fetchone(
+                conn.cursor(), 'SELECT * FROM users WHERE user_id = ?', (telegram_id,)
+            )
+
     def create_user(self, user_id, username, full_name, role=UserRole.USER.value):
-        """Создание пользователя"""
+        """РЎРѕР·РґР°РЅРёРµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ РёР»Рё РѕР±РЅРѕРІР»РµРЅРёРµ РµРіРѕ РґР°РЅРЅС‹С….
+
+        Upsert РЅРµ СЃР±СЂР°СЃС‹РІР°РµС‚ СЂРѕР»СЊ Рё Р±Р°Р»Р°РЅСЃ СЃСѓС‰РµСЃС‚РІСѓСЋС‰РµРіРѕ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.
+        """
         with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT OR REPLACE INTO users (user_id, username, full_name, role)
-                VALUES (?, ?, ?, ?)
-            ''', (user_id, username, full_name, role))
-            return cursor.lastrowid
-    
+            cur = conn.cursor()
+            cur.execute(
+                '''INSERT INTO users (user_id, username, full_name, role)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT(user_id) DO UPDATE SET
+                       username = excluded.username,
+                       full_name = excluded.full_name''',
+                (user_id, username, full_name, role),
+            )
+
+    def set_password(self, user_id, password):
+        with self.get_connection() as conn:
+            conn.execute(
+                'UPDATE users SET password_hash = ? WHERE user_id = ?',
+                (self._hash_password(password), user_id),
+            )
+
+    def authenticate_user(self, user_id, password):
+        """РџСЂРѕРІРµСЂРєР° РїР°СЂРѕР»СЏ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ РІРµР±-РїР°РЅРµР»Рё."""
+        user = self.get_user_by_telegram_id(user_id)
+        if not user or not user['password_hash']:
+            return None
+        if not self.verify_password(user['password_hash'], password):
+            return None
+        return user
+
     def update_user_role(self, user_id, new_role, moderator_settings=None):
-        """Обновление роли пользователя"""
         with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                UPDATE users SET role = ? WHERE user_id = ?
-            ''', (new_role, user_id))
-            
-            # Если назначаем модератора, создаем настройки
+            cur = conn.cursor()
+            cur.execute('UPDATE users SET role = ? WHERE user_id = ?', (new_role, user_id))
             if new_role == UserRole.MODERATOR.value and moderator_settings:
-                cursor.execute('''
-                    INSERT OR REPLACE INTO moderator_settings 
-                    (user_id, max_free_connections, can_manage_servers, can_manage_tariffs, 
-                     can_manage_users, can_create_ads, can_ban_users, requires_approval)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (user_id, *moderator_settings))
-    
+                cur.execute(
+                    '''INSERT OR REPLACE INTO moderator_settings
+                       (user_id, max_free_connections, can_manage_servers, can_manage_tariffs,
+                        can_manage_users, can_create_ads, can_ban_users, requires_approval)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                    (user_id, *moderator_settings),
+                )
+
     def get_user_role(self, user_id):
-        """Получение роли пользователя"""
         user = self.get_user_by_telegram_id(user_id)
         return user['role'] if user else UserRole.USER.value
-    
+
     def is_admin(self, user_id):
-        """Проверка, является ли пользователь администратором"""
         role = self.get_user_role(user_id)
-        return role in [UserRole.ADMIN.value, UserRole.SUPER_ADMIN.value]
-    
+        return role in (UserRole.ADMIN.value, UserRole.SUPER_ADMIN.value)
+
     def is_moderator(self, user_id):
-        """Проверка, является ли пользователь модератором"""
         role = self.get_user_role(user_id)
-        return role in [UserRole.MODERATOR.value, UserRole.ADMIN.value, UserRole.SUPER_ADMIN.value]
-    
+        return role in (UserRole.MODERATOR.value, UserRole.ADMIN.value, UserRole.SUPER_ADMIN.value)
+
     def can_manage_servers(self, user_id):
-        """Может ли пользователь управлять серверами"""
         if self.is_admin(user_id):
             return True
-        
         user = self.get_user_by_telegram_id(user_id)
         if user and user['role'] == UserRole.MODERATOR.value:
             with self.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute('SELECT can_manage_servers FROM moderator_settings WHERE user_id = ?', (user_id,))
-                setting = cursor.fetchone()
-                return setting and setting['can_manage_servers']
-        
+                row = self._fetchone(
+                    conn.cursor(),
+                    'SELECT can_manage_servers FROM moderator_settings WHERE user_id = ?',
+                    (user_id,),
+                )
+                return bool(row and row['can_manage_servers'])
         return False
-    
-    # Методы для управления банами
+
+    def toggle_user_active(self, user_id):
+        with self.get_connection() as conn:
+            conn.execute(
+                'UPDATE users SET is_active = CASE is_active WHEN 1 THEN 0 ELSE 1 END WHERE user_id = ?',
+                (user_id,),
+            )
+
+    def get_all_users(self):
+        with self.get_connection() as conn:
+            return conn.execute(
+                '''SELECT user_id, username, full_name, balance, role,
+                          registration_date, is_active, is_banned
+                   FROM users ORDER BY registration_date DESC'''
+            ).fetchall()
+
+    # ------------------------------------------------------------- bans
     def ban_user(self, user_id, banned_by, reason, is_global=False):
-        """Бан пользователя"""
         with self.get_connection() as conn:
-            cursor = conn.cursor()
-            
-            # Обновляем статус пользователя
-            cursor.execute('''
-                UPDATE users 
-                SET is_banned = TRUE, ban_reason = ?, banned_by = ?, banned_at = CURRENT_TIMESTAMP
-                WHERE user_id = ?
-            ''', (reason, banned_by, user_id))
-            
-            # Если глобальный бан, помечаем все подписки неактивными
+            cur = conn.cursor()
+            cur.execute(
+                '''UPDATE users
+                   SET is_banned = TRUE, ban_reason = ?, banned_by = ?, banned_at = CURRENT_TIMESTAMP
+                   WHERE user_id = ?''',
+                (reason, banned_by, user_id),
+            )
             if is_global:
-                cursor.execute('''
-                    UPDATE subscriptions SET is_active = FALSE WHERE user_id = ?
-                ''', (user_id,))
-            
-            return True
-    
+                cur.execute(
+                    'UPDATE subscriptions SET is_active = FALSE WHERE user_id = ?', (user_id,)
+                )
+
     def unban_user(self, user_id, unbanned_by):
-        """Разбан пользователя"""
         with self.get_connection() as conn:
-            cursor = conn.cursor()
-            
-            cursor.execute('''
-                UPDATE users 
-                SET is_banned = FALSE, ban_reason = NULL, banned_by = NULL, banned_at = NULL
-                WHERE user_id = ?
-            ''', (user_id,))
-            
-            # Логируем действие
-            self.log_action(unbanned_by, 'unban_user', f'Разбан пользователя {user_id}')
-            
-            return True
-    
-    def add_server_ban(self, user_id, server_id, client_id, banned_by, reason, is_global=False):
-        """Добавление бана на сервере"""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT INTO server_bans (user_id, server_id, client_id, banned_by, ban_reason, is_global)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (user_id, server_id, client_id, banned_by, reason, is_global))
-            return cursor.lastrowid
-    
-    def get_global_bans(self):
-        """Получение списка глобальных банов"""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                SELECT sb.*, u.username, u.full_name, s.name as server_name
-                FROM server_bans sb
-                JOIN users u ON sb.user_id = u.user_id
-                JOIN servers s ON sb.server_id = s.id
-                WHERE sb.is_global = TRUE
-            ''')
-            return cursor.fetchall()
-    
+            conn.execute(
+                '''UPDATE users
+                   SET is_banned = FALSE, ban_reason = NULL, banned_by = NULL, banned_at = NULL
+                   WHERE user_id = ?''',
+                (user_id,),
+            )
+        self.log_action(unbanned_by, 'unban_user', f'Р Р°Р·Р±Р°РЅ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ {user_id}')
+
     def is_user_banned(self, user_id):
-        """Проверка, забанен ли пользователь"""
         with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('SELECT is_banned FROM users WHERE user_id = ?', (user_id,))
-            user = cursor.fetchone()
-            return user and user['is_banned']
-    
-    # Методы для работы с серверами
-    def add_server(self, name, url, username, password, location, created_by):
-        """Добавление сервера"""
+            row = self._fetchone(
+                conn.cursor(), 'SELECT is_banned FROM users WHERE user_id = ?', (user_id,)
+            )
+            return bool(row and row['is_banned'])
+
+    def add_server_ban(self, user_id, server_id, client_uuid, banned_by, reason, is_global=False):
         with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT INTO servers (name, url, username, password, location, created_by)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (name, url, username, password, location, created_by))
-            return cursor.lastrowid
-    
+            cur = conn.cursor()
+            cur.execute(
+                '''INSERT INTO server_bans (user_id, server_id, client_uuid, banned_by, ban_reason, is_global)
+                   VALUES (?, ?, ?, ?, ?, ?)''',
+                (user_id, server_id, client_uuid, banned_by, reason, is_global),
+            )
+            return cur.lastrowid
+
+    def get_server_bans_for_user(self, user_id, server_id):
+        with self.get_connection() as conn:
+            return conn.execute(
+                'SELECT * FROM server_bans WHERE user_id = ? AND server_id = ?',
+                (user_id, server_id),
+            ).fetchall()
+
+    def remove_server_ban(self, ban_id):
+        with self.get_connection() as conn:
+            conn.execute('DELETE FROM server_bans WHERE id = ?', (ban_id,))
+
+    def get_global_bans(self):
+        with self.get_connection() as conn:
+            return conn.execute(
+                '''SELECT sb.*, u.username, u.full_name, s.name AS server_name
+                   FROM server_bans sb
+                   JOIN users u ON sb.user_id = u.user_id
+                   JOIN servers s ON sb.server_id = s.id
+                   WHERE sb.is_global = TRUE'''
+            ).fetchall()
+
+    def get_admin_and_moderator_users(self):
+        with self.get_connection() as conn:
+            return conn.execute(
+                '''SELECT * FROM users
+                   WHERE role IN (?, ?, ?) AND is_active = TRUE AND is_banned = FALSE''',
+                (UserRole.MODERATOR.value, UserRole.ADMIN.value, UserRole.SUPER_ADMIN.value),
+            ).fetchall()
+
+    # ------------------------------------------------------------- servers
+    def add_server(self, name, url, username, password, location, created_by, max_users=100):
+        with self.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                '''INSERT INTO servers (name, url, username, password, location, created_by, max_users)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                (name, url, username, password, location, created_by, max_users),
+            )
+            return cur.lastrowid
+
+    def delete_server(self, server_id):
+        with self.get_connection() as conn:
+            conn.execute('DELETE FROM servers WHERE id = ?', (server_id,))
+
+    def toggle_server(self, server_id):
+        with self.get_connection() as conn:
+            conn.execute(
+                'UPDATE servers SET is_active = CASE is_active WHEN 1 THEN 0 ELSE 1 END WHERE id = ?',
+                (server_id,),
+            )
+
+    def get_server(self, server_id):
+        with self.get_connection() as conn:
+            return self._fetchone(conn.cursor(), 'SELECT * FROM servers WHERE id = ?', (server_id,))
+
     def get_servers(self, user_id=None):
-        """Получение списка серверов"""
         with self.get_connection() as conn:
-            cursor = conn.cursor()
-            
             if user_id and not self.is_admin(user_id):
-                # Модераторы видят только активные серверы
-                cursor.execute('''
-                    SELECT * FROM servers 
-                    WHERE is_active = TRUE 
-                    ORDER BY name
-                ''')
-            else:
-                # Администраторы видят все серверы
-                cursor.execute('SELECT * FROM servers ORDER BY name')
-            
-            return cursor.fetchall()
-    
-    # Методы для работы с тарифами
-    def create_tariff(self, name, description, formatted_description, price, duration_days, traffic_gb, created_by, buttons_json=None):
-        """Создание тарифа"""
+                return conn.execute(
+                    'SELECT * FROM servers WHERE is_active = TRUE ORDER BY name'
+                ).fetchall()
+            return conn.execute('SELECT * FROM servers ORDER BY name').fetchall()
+
+    def update_server_stats(self, server_id, current_users):
         with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT INTO tariffs (name, description, formatted_description, price, duration_days, traffic_gb, created_by, buttons_json)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (name, description, formatted_description, price, duration_days, traffic_gb, created_by, buttons_json))
-            return cursor.lastrowid
-    
-    def update_tariff_formatted_description(self, tariff_id, formatted_description, buttons_json=None):
-        """Обновление форматированного описания тарифа"""
+            conn.execute(
+                '''UPDATE servers SET current_users = ?, last_sync = CURRENT_TIMESTAMP
+                   WHERE id = ?''',
+                (current_users, server_id),
+            )
+
+    def get_active_users_count_on_server(self, server_id):
         with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                UPDATE tariffs 
-                SET formatted_description = ?, buttons_json = ?
-                WHERE id = ?
-            ''', (formatted_description, buttons_json, tariff_id))
-            return True
-    
-    # Методы для рекламных кампаний
-    def create_ad_campaign(self, name, description, bot_username, deep_link, created_by, requires_approval=False):
-        """Создание рекламной кампании"""
+            row = self._fetchone(
+                conn.cursor(),
+                'SELECT COUNT(*) FROM subscriptions WHERE server_id = ? AND is_active = TRUE',
+                (server_id,),
+            )
+            return row[0]
+
+    # ------------------------------------------------------------ inbounds
+    def get_inbounds(self, server_id):
         with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT INTO ad_campaigns (name, description, bot_username, deep_link, created_by, requires_approval)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (name, description, bot_username, deep_link, created_by, requires_approval))
-            return cursor.lastrowid
-    
-    def approve_ad_campaign(self, campaign_id, approved_by):
-        """Одобрение рекламной кампании"""
+            return conn.execute(
+                'SELECT * FROM inbounds WHERE server_id = ? AND enable = TRUE ORDER BY inbound_id',
+                (server_id,),
+            ).fetchall()
+
+    def add_inbound(self, server_id, inbound_id, tag, port, protocol, listen, remark):
         with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                UPDATE ad_campaigns 
-                SET is_approved = TRUE, approved_by = ?, approved_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-            ''', (approved_by, campaign_id))
-            return True
-    
-    # Методы для логов
-    def log_action(self, user_id, action, details=None, ip_address=None, user_agent=None):
-        """Логирование действия"""
+            conn.execute(
+                '''INSERT OR REPLACE INTO inbounds
+                   (server_id, inbound_id, tag, port, protocol, listen, remark)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                (server_id, inbound_id, tag, port, protocol, listen, remark),
+            )
+
+    # -------------------------------------------------------------- tariffs
+    def get_tariff(self, tariff_id):
         with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT INTO action_logs (user_id, action, details, ip_address, user_agent)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (user_id, action, details, ip_address, user_agent))
-    
-    # Методы для бесплатных подключений
+            return self._fetchone(conn.cursor(), 'SELECT * FROM tariffs WHERE id = ?', (tariff_id,))
+
+    def get_all_tariffs(self):
+        with self.get_connection() as conn:
+            return conn.execute(
+                'SELECT * FROM tariffs WHERE is_active = TRUE ORDER BY price'
+            ).fetchall()
+
+    def create_tariff(self, name, description, formatted_description, price,
+                      duration_days, traffic_gb, created_by, buttons_json=None):
+        with self.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                '''INSERT INTO tariffs
+                   (name, description, formatted_description, price, duration_days,
+                    traffic_gb, created_by, buttons_json)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                (name, description, formatted_description, price, duration_days,
+                 traffic_gb, created_by, buttons_json),
+            )
+            return cur.lastrowid
+
+    def update_tariff_formatted_description(self, tariff_id, formatted_description,
+                                            buttons_json=None):
+        with self.get_connection() as conn:
+            conn.execute(
+                'UPDATE tariffs SET formatted_description = ?, buttons_json = ? WHERE id = ?',
+                (formatted_description, buttons_json, tariff_id),
+            )
+
+    def toggle_tariff(self, tariff_id):
+        with self.get_connection() as conn:
+            conn.execute(
+                'UPDATE tariffs SET is_active = CASE is_active WHEN 1 THEN 0 ELSE 1 END WHERE id = ?',
+                (tariff_id,),
+            )
+
+    # --------------------------------------------------------- subscriptions
+    def create_subscription(self, user_id, server_id, inbound_row_id, tariff_id,
+                            client_email, client_uuid, client_id, custom_name,
+                            is_free, expiry_days, total_gb):
+        with self.get_connection() as conn:
+            cur = conn.cursor()
+            expiry_str = (
+                datetime.now() + timedelta(days=expiry_days)
+            ).strftime('%Y-%m-%d %H:%M:%S')
+            cur.execute(
+                '''INSERT INTO subscriptions
+                   (user_id, server_id, inbound_row_id, tariff_id, client_email,
+                    client_uuid, client_id, custom_name, is_free, expiry_date, total_gb)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                (user_id, server_id, inbound_row_id, tariff_id, client_email,
+                 client_uuid, str(client_id), custom_name, is_free, expiry_str, total_gb),
+            )
+            return cur.lastrowid
+
+    def deactivate_subscription(self, subscription_id):
+        with self.get_connection() as conn:
+            conn.execute(
+                'UPDATE subscriptions SET is_active = FALSE WHERE id = ?', (subscription_id,)
+            )
+
+    def get_user_subscriptions(self, user_id, only_active=True):
+        query = '''
+            SELECT sub.*, s.name AS server_name, i.protocol, i.port AS inbound_port
+            FROM subscriptions sub
+            LEFT JOIN servers s ON s.id = sub.server_id
+            LEFT JOIN inbounds i ON i.id = sub.inbound_row_id
+            WHERE sub.user_id = ?
+        '''
+        if only_active:
+            query += ' AND sub.is_active = TRUE'
+        query += ' ORDER BY sub.created_at DESC'
+        with self.get_connection() as conn:
+            return conn.execute(query, (user_id,)).fetchall()
+
+    def get_user_subscriptions_on_server(self, user_id, server_id):
+        with self.get_connection() as conn:
+            return conn.execute(
+                '''SELECT * FROM subscriptions
+                   WHERE user_id = ? AND server_id = ? AND is_active = TRUE''',
+                (user_id, server_id),
+            ).fetchall()
+
+    def cleanup_expired_subscriptions(self):
+        with self.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                '''UPDATE subscriptions SET is_active = FALSE
+                   WHERE expiry_date < CURRENT_TIMESTAMP AND is_active = TRUE'''
+            )
+            return cur.rowcount
+
+    # -------------------------------------------------------------- payments
+    def create_payment(self, user_id, tariff_id, amount, payment_method, transaction_id):
+        with self.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                '''INSERT INTO payments (user_id, tariff_id, amount, payment_method, transaction_id)
+                   VALUES (?, ?, ?, ?, ?)''',
+                (user_id, tariff_id, amount, payment_method, transaction_id),
+            )
+            return cur.lastrowid
+
+    def update_payment_status(self, transaction_id, status):
+        with self.get_connection() as conn:
+            conn.execute(
+                'UPDATE payments SET status = ? WHERE transaction_id = ?',
+                (status, transaction_id),
+            )
+
+    def get_payment(self, transaction_id):
+        with self.get_connection() as conn:
+            return self._fetchone(
+                conn.cursor(),
+                'SELECT * FROM payments WHERE transaction_id = ?',
+                (transaction_id,),
+            )
+
+    def get_all_payments(self):
+        with self.get_connection() as conn:
+            return conn.execute(
+                '''SELECT p.*, u.username
+                   FROM payments p LEFT JOIN users u ON u.user_id = p.user_id
+                   ORDER BY p.payment_date DESC'''
+            ).fetchall()
+
+    def update_user_balance(self, user_id, amount):
+        with self.get_connection() as conn:
+            conn.execute(
+                'UPDATE users SET balance = balance + ? WHERE user_id = ?', (amount, user_id)
+            )
+
+    def get_user_balance(self, user_id):
+        user = self.get_user_by_telegram_id(user_id)
+        return user['balance'] if user else 0.0
+
+    # ------------------------------------------------------ free connections
     def can_create_free_connection(self, user_id):
-        """Может ли пользователь создать бесплатное подключение"""
         user = self.get_user_by_telegram_id(user_id)
         if not user:
             return False
-        
         if self.is_admin(user_id):
             return True
-        
         if user['role'] == UserRole.MODERATOR.value:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute('''
-                    SELECT used_free_connections, free_connections_limit 
-                    FROM users WHERE user_id = ?
-                ''', (user_id,))
-                user_data = cursor.fetchone()
-                if user_data and user_data['used_free_connections'] < user_data['free_connections_limit']:
-                    return True
-        
+            return user['used_free_connections'] < user['free_connections_limit']
         return False
-    
+
     def increment_free_connections(self, user_id):
-        """Увеличение счетчика использованных бесплатных подключений"""
         with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                UPDATE users 
-                SET used_free_connections = used_free_connections + 1 
-                WHERE user_id = ?
-            ''', (user_id,))
-    
-    # Статистика
+            conn.execute(
+                '''UPDATE users SET used_free_connections = used_free_connections + 1
+                   WHERE user_id = ?''',
+                (user_id,),
+            )
+
+    # ------------------------------------------------------------ ad campaigns
+    def create_ad_campaign(self, name, description, bot_username, deep_link,
+                           created_by, requires_approval=False):
+        with self.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                '''INSERT INTO ad_campaigns
+                   (name, description, bot_username, deep_link, created_by, requires_approval)
+                   VALUES (?, ?, ?, ?, ?, ?)''',
+                (name, description, bot_username, deep_link, created_by, requires_approval),
+            )
+            return cur.lastrowid
+
+    def approve_ad_campaign(self, campaign_id, approved_by):
+        with self.get_connection() as conn:
+            conn.execute(
+                '''UPDATE ad_campaigns
+                   SET is_approved = TRUE, approved_by = ?, approved_at = CURRENT_TIMESTAMP
+                   WHERE id = ?''',
+                (approved_by, campaign_id),
+            )
+
+    # ------------------------------------------------------------------ logs
+    def log_action(self, user_id, action, details=None, ip_address=None, user_agent=None):
+        with self.get_connection() as conn:
+            conn.execute(
+                '''INSERT INTO action_logs (user_id, action, details, ip_address, user_agent)
+                   VALUES (?, ?, ?, ?, ?)''',
+                (user_id, action, details, ip_address, user_agent),
+            )
+
+    def log_audit(self, admin_id, action, description=None, ip_address=None, user_agent=None):
+        with self.get_connection() as conn:
+            conn.execute(
+                '''INSERT INTO audit_log (admin_id, action, description, ip_address, user_agent)
+                   VALUES (?, ?, ?, ?, ?)''',
+                (admin_id, action, description, ip_address, user_agent),
+            )
+
+    def get_recent_audit(self, limit=100):
+        with self.get_connection() as conn:
+            return conn.execute(
+                'SELECT * FROM audit_log ORDER BY created_at DESC LIMIT ?', (limit,)
+            ).fetchall()
+
+    # ------------------------------------------------------------- statistics
     def get_system_statistics(self):
-        """Получение системной статистики"""
         with self.get_connection() as conn:
-            cursor = conn.cursor()
-            
+            cur = conn.cursor()
             stats = {}
-            
-            # Пользователи
-            cursor.execute('SELECT COUNT(*) FROM users')
-            stats['total_users'] = cursor.fetchone()[0]
-            
-            cursor.execute('SELECT COUNT(*) FROM users WHERE role = ?', (UserRole.USER.value,))
-            stats['regular_users'] = cursor.fetchone()[0]
-            
-            cursor.execute('SELECT COUNT(*) FROM users WHERE role = ?', (UserRole.MODERATOR.value,))
-            stats['moderators'] = cursor.fetchone()[0]
-            
-            cursor.execute('SELECT COUNT(*) FROM users WHERE role IN (?, ?)', 
-                         (UserRole.ADMIN.value, UserRole.SUPER_ADMIN.value))
-            stats['admins'] = cursor.fetchone()[0]
-            
-            # Серверы и подписки
-            cursor.execute('SELECT COUNT(*) FROM servers WHERE is_active = TRUE')
-            stats['active_servers'] = cursor.fetchone()[0]
-            
-            cursor.execute('SELECT COUNT(*) FROM subscriptions WHERE is_active = TRUE')
-            stats['active_subscriptions'] = cursor.fetchone()[0]
-            
-            # Финансы
-            cursor.execute('SELECT SUM(amount) FROM payments WHERE status = "completed"')
-            stats['total_revenue'] = cursor.fetchone()[0] or 0
-            
+            stats['total_users'] = self._fetchone(cur, 'SELECT COUNT(*) FROM users')[0]
+            stats['regular_users'] = self._fetchone(
+                cur, "SELECT COUNT(*) FROM users WHERE role = ?", (UserRole.USER.value,))[0]
+            stats['moderators'] = self._fetchone(
+                cur, "SELECT COUNT(*) FROM users WHERE role = ?", (UserRole.MODERATOR.value,))[0]
+            stats['admins'] = self._fetchone(
+                cur, "SELECT COUNT(*) FROM users WHERE role IN (?, ?)",
+                (UserRole.ADMIN.value, UserRole.SUPER_ADMIN.value))[0]
+            stats['active_servers'] = self._fetchone(
+                cur, 'SELECT COUNT(*) FROM servers WHERE is_active = TRUE')[0]
+            stats['active_subscriptions'] = self._fetchone(
+                cur, 'SELECT COUNT(*) FROM subscriptions WHERE is_active = TRUE')[0]
+            row = self._fetchone(
+                cur, "SELECT SUM(amount) FROM payments WHERE status = 'completed'")
+            stats['total_revenue'] = row[0] or 0
+            row = self._fetchone(cur, 'SELECT COUNT(*) FROM payments')
+            stats['total_payments'] = row[0]
             return stats
+
+
+def test_database():
+    """РџСЂРѕРІРµСЂРєР° РїРѕРґРєР»СЋС‡РµРЅРёСЏ Рё РёРЅРёС†РёР°Р»РёР·Р°С†РёРё Р‘Р”."""
+    try:
+        db = Database()
+        with db.get_connection() as conn:
+            tables = {
+                r[0] for r in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                )
+            }
+        required = {'users', 'servers', 'inbounds', 'tariffs', 'subscriptions',
+                    'payments', 'server_bans', 'action_logs'}
+        missing = required - tables
+        if missing:
+            print(f'вќЊ РћС‚СЃСѓС‚СЃС‚РІСѓСЋС‚ С‚Р°Р±Р»РёС†С‹: {missing}')
+            return False
+        print(f'вњ… Database OK: {db.db_path}')
+        return True
+    except Exception as e:
+        print(f'вќЊ Database test failed: {e}')
+        return False
+
+
+if __name__ == '__main__':
+    test_database()

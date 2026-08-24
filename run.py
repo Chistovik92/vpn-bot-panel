@@ -1,84 +1,71 @@
 #!/usr/bin/env python3
-"""
-VPN Bot Panel - Основной скрипт запуска
-"""
+"""Совместный запуск веб-панели и Telegram бота.
 
+Веб-панель работает в фоновом потоке, бот — в главном
+(telegram-bot-polling требует главный поток для обработки сигналов).
+"""
 import logging
 import os
 import sys
 import threading
-from app.bot import VPNBot
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from app.config import Config
 
+
 def setup_logging():
-    """Настройка логирования"""
-    log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
-    log_file = os.getenv('LOG_FILE', 'logs/vpn_bot.log')
-    
-    # Создаем директорию для логов если нет
-    os.makedirs(os.path.dirname(log_file), exist_ok=True)
-    
+    log_cfg = Config().get_logging_config()
+    log_file = log_cfg['file']
+    os.makedirs(os.path.dirname(log_file) or '.', exist_ok=True)
+    level = getattr(logging, str(log_cfg['level']).upper(), logging.INFO)
     logging.basicConfig(
-        level=log_level,
+        level=level,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         handlers=[
             logging.FileHandler(log_file, encoding='utf-8'),
-            logging.StreamHandler(sys.stdout)
-        ]
+            logging.StreamHandler(sys.stdout),
+        ],
     )
 
-def run_bot():
-    """Запуск Telegram бота"""
-    try:
-        bot = VPNBot()
-        bot.run()
-    except Exception as e:
-        logging.error(f"Ошибка бота: {e}")
 
 def run_web():
-    """Запуск веб-панели"""
     try:
         from app.web import create_app
+        web_cfg = Config().get_web_config()
         app = create_app()
-        web_config = Config().get_web_config()
-        app.run(
-            host=web_config['host'],
-            port=web_config['port'],
-            debug=web_config['debug']
-        )
+        app.run(host=web_cfg['host'], port=web_cfg['port'],
+                debug=False, use_reloader=False)
     except Exception as e:
-        logging.error(f"Ошибка веб-панели: {e}")
+        logging.error('Ошибка веб-панели: %s', e)
+
+
+def run_bot():
+    from app.bot import VPNBot
+    VPNBot().run()
+
 
 def main():
-    """Основная функция запуска"""
-    try:
-        setup_logging()
-        logging.info("🚀 Запуск VPN Bot Panel...")
-        
-        # Проверка конфигурации
-        config = Config()
-        if not config.validate_config():
-            logging.error("❌ Ошибка конфигурации. Проверьте config.ini")
-            sys.exit(1)
-        
-        # Запуск в отдельных потоках
-        bot_thread = threading.Thread(target=run_bot, daemon=True)
-        web_thread = threading.Thread(target=run_web, daemon=True)
-        
-        bot_thread.start()
-        web_thread.start()
-        
-        logging.info("✅ Бот и веб-панель запущены")
-        
-        # Ожидание завершения
-        bot_thread.join()
-        web_thread.join()
-        
-    except KeyboardInterrupt:
-        logging.info("⏹️ Остановка по запросу пользователя")
-    except Exception as e:
-        logging.error(f"❌ Критическая ошибка: {e}")
+    setup_logging()
+    logging.info('🚀 Запуск VPN Bot Panel...')
+
+    config = Config()
+    if not config.validate_config():
+        logging.error('❌ Токен бота не настроен. Проверьте config.ini')
         sys.exit(1)
 
-if __name__ == "__main__":
+    web_thread = threading.Thread(target=run_web, daemon=True,
+                                  name='web-panel')
+    web_thread.start()
+
+    try:
+        run_bot()
+    except KeyboardInterrupt:
+        logging.info('⏹️ Остановка по запросу пользователя')
+    except Exception as e:
+        logging.error('❌ Критическая ошибка: %s', e)
+        sys.exit(1)
+
+
+if __name__ == '__main__':
     main()

@@ -1,11 +1,23 @@
 #!/usr/bin/env python3
-"""Compatibility entry point for the web admin panel.
+"""Совместимая точка входа веб-панели.
 
-The project uses the SQLite/Flask implementation in admin_panel.py.
-This module intentionally re-exports the same Flask app so old service
-files that start web_panel.py keep working.
+Реализация находится в app.web (ролевой доступ).
+Старые service-файлы, запускавшие web_panel.py, продолжают работать.
 """
-from admin_panel import app
+import os
+import sys
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080, debug=False)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from app.config import Config
+
+
+def main():
+    from app.web import create_app
+    cfg = Config().get_web_config()
+    app = create_app()
+    app.run(host=cfg['host'], port=cfg['port'], debug=False)
+
+
+if __name__ == '__main__':
+    main()

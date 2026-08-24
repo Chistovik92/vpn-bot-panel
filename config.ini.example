@@ -1,3 +1,6 @@
+# VPN Bot Panel configuration example
+# Скопируйте в config.ini и заполните значения.
+
 [DATABASE]
 path = data/vpn_bot.db
 backup_path = data/backups/
@@ -5,27 +8,28 @@ backup_retention_days = 30
 
 [BOT]
 token = YOUR_BOT_TOKEN_HERE
-admin_id = YOUR_ADMIN_ID_HERE
-webhook_url =
-webhook_port = 8443
+admin_telegram_id = 123456789
+
+[WEB]
+# secret_key генерируется автоматически при первом запуске панели
+host = 127.0.0.1
+port = 8080
+debug = False
 
 [PAYMENTS]
-yookassa_shop_id = YOUR_YOOKASSA_SHOP_ID_HERE
-yookassa_secret_key = YOUR_YOOKASSA_SECRET_KEY_HERE
-payment_timeout_minutes = 30
-
-[VPN]
-configs_path = data/vpn_configs/
-default_server = vpn.example.com
-default_port = 51820
-config_expiry_days = 30
+# Номер кошелька YooMoney (например, 41001234567890)
+yoomoney_receiver = YOUR_YOOMONEY_WALLET
+# Токен приложения YooMoney с правами operation-history
+yoomoney_token = YOUR_YOOMONEY_TOKEN
+# Опционально: CryptoBot
+cryptobot_token =
 
 [SECURITY]
 max_login_attempts = 5
 lockout_duration_minutes = 30
 session_timeout_minutes = 60
 password_min_length = 8
-web_secret = CHANGE_ME
+auto_unban_interval_hours = 6
 
 [LOGGING]
 level = INFO

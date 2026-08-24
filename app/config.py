@@ -88,6 +88,7 @@ class Config:
         self.config["PAYMENTS"] = {
             "yoomoney_receiver": "YOUR_YOOMONEY_WALLET",
             "yoomoney_token": "YOUR_YOOMONEY_TOKEN",
+            "yoomoney_notification_secret": "",
             "cryptobot_token": "",
         }
         self.config["SECURITY"] = {
@@ -166,6 +167,9 @@ class Config:
             ),
             "yoomoney_token": self.config.get(
                 "PAYMENTS", "yoomoney_token", fallback=""
+            ),
+            "yoomoney_notification_secret": self.config.get(
+                "PAYMENTS", "yoomoney_notification_secret", fallback=""
             ),
             "cryptobot_token": self.config.get(
                 "PAYMENTS", "cryptobot_token", fallback=""

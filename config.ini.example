@@ -21,6 +21,8 @@ debug = False
 yoomoney_receiver = YOUR_YOOMONEY_WALLET
 # Токен приложения YooMoney с правами operation-history
 yoomoney_token = YOUR_YOOMONEY_TOKEN
+# Секрет HTTP-уведомлений YooMoney (для мгновенной активации оплат)
+yoomoney_notification_secret =
 # Опционально: CryptoBot
 cryptobot_token =
 

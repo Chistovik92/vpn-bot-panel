@@ -178,10 +178,7 @@ class PaymentManager:
         return result
 
     def check_and_process(self, payment_id, user_id):
-        """Проверка оплаты и активация подписки при успехе.
-
-        Защита от повторной активации: только платеж в статусе pending.
-        """
+        """Проверка оплаты через API и активация подписки при успехе."""
         payment = self.db.get_payment(payment_id)
         if not payment or payment['user_id'] != user_id:
             return {'success': False, 'error': 'Платеж не найден'}
@@ -196,12 +193,18 @@ class PaymentManager:
         if check.get('status') != 'completed':
             return {'success': False, 'error': None}  # ещё не оплачен
 
-        # Уже обработан ранее
-        fresh = self.db.get_payment(payment_id)
-        if fresh['status'] == 'completed':
-            return {'success': True, 'config_data': '', 'already_activated': True}
+        return self.activate_payment(payment_id)
 
-        # Активация подписки
+    def activate_payment(self, payment_id):
+        """Активация подписки по оплаченному платежу (однократно)."""
+        fresh = self.db.get_payment(payment_id)
+        if not fresh:
+            return {'success': False, 'error': 'Платеж не найден'}
+        if fresh['status'] == 'completed':
+            return {'success': True, 'config_data': '',
+                    'already_activated': True}
+
+        user_id = fresh['user_id']
         from app.xui_api import XUIAPIManager
         api_manager = XUIAPIManager(self.db)
         subscription_id, config_data = api_manager.create_user_subscription(

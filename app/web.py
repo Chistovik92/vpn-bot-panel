@@ -15,6 +15,7 @@ from flask import (
 
 from app.database import Database, UserRole
 from app.config import Config
+from app.payment import PaymentManager
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +99,7 @@ def create_app(config=None, database=None):
         app.config['SESSION_COOKIE_SECURE'] = True
 
     db = database or Database()
+    payment_manager = PaymentManager(db, config)
     limiter = LoginRateLimiter(
         max_attempts=security['max_login_attempts'],
         lockout_seconds=security['lockout_duration_minutes'] * 60,
@@ -114,6 +116,9 @@ def create_app(config=None, database=None):
     @app.before_request
     def csrf_protect():
         if request.method == 'POST':
+            # Внешние вебхуки аутентифицируются собственной подписью
+            if request.path.startswith('/webhook/'):
+                return None
             token = session.get('_csrf_token', '')
             sent = (request.form.get('_csrf_token')
                     or request.headers.get('X-CSRF-Token') or '')
@@ -232,6 +237,52 @@ def create_app(config=None, database=None):
         db.log_audit(session['user_id'], 'toggle_server',
                      f'server {server_id}', request.remote_addr)
         return jsonify(ok=True)
+
+    # ------------------------------------------------------------------ webhook
+    def _verify_yoomoney_hash(form, secret):
+        """Проверка sha1-подписи HTTP-уведомления YooMoney."""
+        import hashlib
+        parts = [
+            form.get('notification_type', ''),
+            form.get('operation_id', ''),
+            form.get('amount', ''),
+            form.get('currency', ''),
+            form.get('datetime', ''),
+            form.get('sender', ''),
+            form.get('codepro', ''),
+            form.get('label', ''),
+            secret,
+        ]
+        digest = hashlib.sha1('&'.join(parts).encode('utf-8')).hexdigest()
+        return secrets.compare_digest(digest, form.get('sha1_hash', '').lower())
+
+    @app.route('/webhook/yoomoney', methods=['POST'])
+    def webhook_yoomoney():
+        pc = config.get_payment_config()
+        secret = pc.get('yoomoney_notification_secret') or ''
+        if not secret:
+            logger.warning('YooMoney webhook received but secret not configured')
+            abort(403)
+        if not _verify_yoomoney_hash(request.form, secret):
+            logger.warning('YooMoney webhook bad signature from %s',
+                           request.remote_addr)
+            abort(403)
+
+        label = request.form.get('label', '')
+        payment = db.get_payment(label) if label else None
+        if not payment:
+            return jsonify(ok=True, note='unknown label')
+
+        amount = float(request.form.get('amount') or 0)
+        if amount + 0.01 < payment['amount']:
+            logger.warning('YooMoney webhook underpaid %s: %s < %s',
+                           label, amount, payment['amount'])
+            return jsonify(ok=False, note='underpaid'), 400
+
+        result = payment_manager.activate_payment(label)
+        logger.info('YooMoney webhook for %s: %s', label,
+                    'activated' if result.get('success') else result.get('error'))
+        return jsonify(ok=bool(result.get('success')))
 
     # ---------------------------------------------------------------- read API
     @app.route('/api/stats')
